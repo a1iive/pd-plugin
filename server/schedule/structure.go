@@ -64,7 +64,6 @@ func GetFunction(path string, funcName string) (plugin.Symbol, error){
 		Plugin = p
 	}
 	PluginLock.Unlock()
-	log.Info("plugin unlock")
 	PluginLock.RLock()
 	defer PluginLock.RUnlock()
 	//get func from plugin

@@ -119,6 +119,7 @@ func (uc *userConfig) GetRegionId(cluster schedule.Cluster) map[string][]uint64 
 }
 
 func (uc *userConfig) GetStoreIdLeader(cluster schedule.Cluster) []uint64 {
+	var ret []uint64
 	for _, s := range uc.cfg.Leader.Stores {
 		lLen := len(s.StoreLabel)
 		for _, store := range cluster.GetStores() {
@@ -138,11 +139,11 @@ func (uc *userConfig) GetStoreIdLeader(cluster schedule.Cluster) []uint64 {
 				pi.StoreIDs = append(pi.StoreIDs, store.GetID())
 				schedule.PluginsMap["Leader"] = pi
 				log.Info("GetStoreIdLeader", zap.Uint64("store-id", store.GetID()))
-				return []uint64{store.GetID()}
+				ret = append(ret, store.GetID())
 			}
 		}
 	}
-	return []uint64{0}
+	return ret
 }
 
 func (uc *userConfig) GetRegionIdLeader(cluster schedule.Cluster) []uint64 {
@@ -177,6 +178,7 @@ func (uc *userConfig) GetRegionIdLeader(cluster schedule.Cluster) []uint64 {
 }
 
 func (uc *userConfig) GetStoreIdRegion(cluster schedule.Cluster) []uint64 {
+	var ret []uint64
 	for _, s := range uc.cfg.Region.Stores {
 		lLen := len(s.StoreLabel)
 		for _, store := range cluster.GetStores() {
@@ -196,11 +198,11 @@ func (uc *userConfig) GetStoreIdRegion(cluster schedule.Cluster) []uint64 {
 				pi.StoreIDs = append(pi.StoreIDs, store.GetID())
 				schedule.PluginsMap["Region"] = pi
 				log.Info("GetStoreIdRegion", zap.Uint64("store-id", store.GetID()))
-				return []uint64{store.GetID()}
+				ret = append(ret, store.GetID())
 			}
 		}
 	}
-	return []uint64{0}
+	return ret
 }
 
 func (uc *userConfig) GetRegionIdRegion(cluster schedule.Cluster) []uint64 {

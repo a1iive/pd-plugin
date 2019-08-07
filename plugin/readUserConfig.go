@@ -9,7 +9,7 @@ func ProduceScheduler(cfg schedule.Config, opController *schedule.OperatorContro
 	regionIDs := cfg.GetRegionId(cluster)
 	interval := cfg.GetInterval()
 	var schedules []schedule.Scheduler
-	schedules = append(schedules, newMoveLeaderUserScheduler(opController, regionIDs["Leader"], storeIDs["Leader"], interval["Leader"]))
+	//schedules = append(schedules, newMoveLeaderUserScheduler(opController, regionIDs["Leader"], storeIDs["Leader"], interval["Leader"]))
 	schedules = append(schedules, newMoveRegionUserScheduler(opController, regionIDs["Region"], storeIDs["Region"], interval["Region"]))
 	return schedules
 }

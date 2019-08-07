@@ -141,9 +141,9 @@ func (l *balanceLeaderScheduler) transferLeaderOut(source *core.StoreInfo, clust
 	defer schedule.PluginsMapLock.RUnlock()
 	sourceID := source.GetID()
 	region := cluster.RandLeaderRegion(sourceID, core.HealthRegion())
-
+	
 	//过滤与用户调度有冲突的region
-	if region != nil && l.regionFilters != nil {
+	if region != nil && len(l.regionFilters) != 0 {
 		if schedule.RegionFilterSource(cluster, region, l.regionFilters, schedule.PluginsMap["Leader"].GetInterval(), schedule.PluginsMap["Leader"].GetRegionIDs()) {
 			return nil
 		}
@@ -174,7 +174,7 @@ func (l *balanceLeaderScheduler) transferLeaderIn(target *core.StoreInfo, cluste
 	region := cluster.RandFollowerRegion(targetID, core.HealthRegion())
 
 	//过滤与用户调度有冲突的region
-	if region != nil && l.regionFilters != nil {
+	if region != nil && len(l.regionFilters) != 0 {
 		if schedule.RegionFilterSource(cluster, region, l.regionFilters, schedule.PluginsMap["Leader"].GetInterval(), schedule.PluginsMap["Leader"].GetRegionIDs()) {
 			return nil
 		}
