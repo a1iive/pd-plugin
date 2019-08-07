@@ -15,7 +15,7 @@ package checker
 
 import (
 	"github.com/pingcap/kvproto/pkg/metapb"
-	log "github.com/pingcap/log"
+	"github.com/pingcap/log"
 	"github.com/pingcap/pd/server/core"
 	"github.com/pingcap/pd/server/namespace"
 	"github.com/pingcap/pd/server/schedule"
@@ -24,9 +24,10 @@ import (
 
 // NamespaceChecker ensures region to go to the right place.
 type NamespaceChecker struct {
-	cluster    schedule.Cluster
-	filters    []schedule.Filter
-	classifier namespace.Classifier
+	cluster       schedule.Cluster
+	filters       []schedule.Filter
+	regionFilters []schedule.RegionFilter
+	classifier    namespace.Classifier
 }
 
 // NewNamespaceChecker creates a namespace checker.
@@ -34,18 +35,38 @@ func NewNamespaceChecker(cluster schedule.Cluster, classifier namespace.Classifi
 	filters := []schedule.Filter{
 		schedule.StoreStateFilter{MoveRegion: true},
 	}
+	regionFilters := []schedule.RegionFilter{}
+	//get func from plugin
+	//func : NewLeaderFilter()
+	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewLeaderFilter")
+	if err != nil {
+		log.Error("Plugin GetFunction err", zap.Error(err))
+	} else {
+		NewLeaderFilter := f.(func() schedule.RegionFilter)
+		regionFilters = append(regionFilters, NewLeaderFilter())
+	}
 
 	return &NamespaceChecker{
-		cluster:    cluster,
-		filters:    filters,
-		classifier: classifier,
+		cluster:       cluster,
+		filters:       filters,
+		regionFilters: regionFilters,
+		classifier:    classifier,
 	}
 }
 
 // Check verifies a region's namespace, creating an Operator if need.
 func (n *NamespaceChecker) Check(region *core.RegionInfo) *schedule.Operator {
+	schedule.PluginsMapLock.RLock()
+	defer schedule.PluginsMapLock.RUnlock()
+
 	if !n.cluster.IsNamespaceRelocationEnabled() {
 		return nil
+	}
+	//TODO: 如果是leader的filter,除leader peer外其余peer可以继续
+	if len(n.regionFilters) != 0 {
+		if schedule.RegionFilterSource(n.cluster, region, n.regionFilters, schedule.PluginsMap["Leader"].GetInterval(), schedule.PluginsMap["Leader"].GetRegionIDs()) {
+			return nil
+		}
 	}
 
 	checkerCounter.WithLabelValues("namespace_checker", "check").Inc()

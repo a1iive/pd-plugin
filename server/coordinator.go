@@ -16,10 +16,13 @@ package server
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
-	log "github.com/pingcap/log"
+	"github.com/pingcap/log"
 	"github.com/pingcap/pd/pkg/logutil"
 	"github.com/pingcap/pd/server/checker"
 	"github.com/pingcap/pd/server/core"
@@ -106,7 +109,6 @@ func (c *coordinator) patrolRegions() {
 			log.Info("patrol regions has been stopped")
 			return
 		}
-
 		regions := c.cluster.ScanRegions(key, patrolScanRegionLimit)
 		if len(regions) == 0 {
 			// Resets the scan key.
@@ -244,10 +246,55 @@ func (c *coordinator) run() {
 		log.Error("cannot persist schedule config", zap.Error(err))
 	}
 
-	c.wg.Add(2)
+	c.wg.Add(3)
 	// Starts to patrol regions.
+	go c.readUserConfig()
 	go c.patrolRegions()
 	go c.drivePushOperator()
+}
+
+//read user_config.toml and load plugin
+func (c *coordinator) readUserConfig() {
+	defer logutil.LogPanic()
+	defer c.wg.Done()
+	//get func from plugin
+	//func : NewUserConfig()
+	f1, err := schedule.GetFunction("./plugin/testPlugin.so", "NewUserConfig")
+	if err != nil {
+		log.Error("GetFunction err", zap.Error(err))
+		return
+	}
+	NewUserConfig := f1.(func() schedule.Config)
+	//func : ProduceScheduler()
+	f2, err := schedule.GetFunction("./plugin/testPlugin.so", "ProduceScheduler")
+	if err != nil {
+		log.Error("GetFunction err", zap.Error(err))
+		return
+	}
+	ProduceScheduler := f2.(func(schedule.Config, *schedule.OperatorController, schedule.Cluster) []schedule.Scheduler)
+
+	userConfig := NewUserConfig()
+	schedulers := ProduceScheduler(userConfig, c.opController, c.cluster)
+	for _, s := range schedulers {
+		if err = c.addUserScheduler(s); err != nil {
+			log.Error("can not add scheduler", zap.String("scheduler-name", s.GetName()), zap.Error(err))
+		}
+	}
+	//make chan to get signal from user which means user config changed
+	s := make(chan os.Signal, 1)
+	signal.Notify(s, syscall.SIGUSR1)
+
+	for {
+		<-s
+		log.Info("user config changed")
+		userConfig.LoadConfig()
+		schedulers := ProduceScheduler(userConfig, c.opController, c.cluster)
+		for _, s := range schedulers {
+			if err = c.addUserScheduler(s); err != nil {
+				log.Error("can not add scheduler", zap.String("scheduler-name", s.GetName()), zap.Error(err))
+			}
+		}
+	}
 }
 
 func (c *coordinator) stop() {
@@ -397,6 +444,30 @@ func (c *coordinator) addScheduler(scheduler schedule.Scheduler, args ...string)
 	return nil
 }
 
+func (c *coordinator) addUserScheduler(scheduler schedule.Scheduler, args ...string) error {
+
+	if _, ok := c.schedulers[scheduler.GetName()]; ok {
+		if err := c.removeScheduler(scheduler.GetName()); err != nil {
+			log.Error("can not remove scheduler", zap.String("scheduler-name", scheduler.GetName()), zap.Error(err))
+		}
+	}
+
+	c.Lock()
+	defer c.Unlock()
+
+	s := newScheduleController(c, scheduler)
+	if err := s.Prepare(c.cluster); err != nil {
+		return err
+	}
+
+	c.wg.Add(1)
+	go c.runScheduler(s)
+	c.schedulers[s.GetName()] = s
+	c.cluster.opt.AddSchedulerCfg(s.GetType(), args)
+
+	return nil
+}
+
 func (c *coordinator) removeScheduler(name string) error {
 	c.Lock()
 	defer c.Unlock()
@@ -429,6 +500,8 @@ func (c *coordinator) runScheduler(s *scheduleController) {
 				continue
 			}
 			if op := s.Schedule(); op != nil {
+				log.Info("call schedule have op", zap.String("schedule name", s.GetName()))
+				log.Info("run scheduler", zap.Int("num of op", len(op)))
 				c.opController.AddWaitingOperator(op...)
 			}
 

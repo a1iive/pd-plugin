@@ -74,43 +74,76 @@ type balanceHotRegionsScheduler struct {
 	leaderLimit uint64
 	peerLimit   uint64
 	types       []BalanceType
-
+	regionFilters []schedule.RegionFilter
 	// store id -> hot regions statistics as the role of leader
 	stats *storeStatistics
 	r     *rand.Rand
 }
 
 func newBalanceHotRegionsScheduler(opController *schedule.OperatorController) *balanceHotRegionsScheduler {
+	regionFilters := []schedule.RegionFilter{}
+	//get func from plugin
+	//func : NewLeaderFilter()
+	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewLeaderFilter")
+	if err != nil {
+		log.Error("Plugin GetFunction err", zap.Error(err))
+	} else {
+		NewLeaderFilter := f.(func() schedule.RegionFilter)
+		regionFilters = append(regionFilters, NewLeaderFilter())
+	}
 	base := newBaseScheduler(opController)
 	return &balanceHotRegionsScheduler{
 		baseScheduler: base,
 		leaderLimit:   1,
 		peerLimit:     1,
 		stats:         newStoreStaticstics(),
+		regionFilters: regionFilters,
 		types:         []BalanceType{hotWriteRegionBalance, hotReadRegionBalance},
 		r:             rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
 func newBalanceHotReadRegionsScheduler(opController *schedule.OperatorController) *balanceHotRegionsScheduler {
+	regionFilters := []schedule.RegionFilter{}
+	//get func from plugin
+	//func : NewLeaderFilter()
+	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewLeaderFilter")
+	if err != nil {
+		log.Error("Plugin GetFunction err", zap.Error(err))
+	} else {
+		NewLeaderFilter := f.(func() schedule.RegionFilter)
+		regionFilters = append(regionFilters, NewLeaderFilter())
+	}
 	base := newBaseScheduler(opController)
 	return &balanceHotRegionsScheduler{
 		baseScheduler: base,
 		leaderLimit:   1,
 		peerLimit:     1,
 		stats:         newStoreStaticstics(),
+		regionFilters: regionFilters,
 		types:         []BalanceType{hotReadRegionBalance},
 		r:             rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
 func newBalanceHotWriteRegionsScheduler(opController *schedule.OperatorController) *balanceHotRegionsScheduler {
+	regionFilters := []schedule.RegionFilter{}
+	//get func from plugin
+	//func : NewLeaderFilter()
+	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewLeaderFilter")
+	if err != nil {
+		log.Error("Plugin GetFunction err", zap.Error(err))
+	} else {
+		NewLeaderFilter := f.(func() schedule.RegionFilter)
+		regionFilters = append(regionFilters, NewLeaderFilter())
+	}
 	base := newBaseScheduler(opController)
 	return &balanceHotRegionsScheduler{
 		baseScheduler: base,
 		leaderLimit:   1,
 		peerLimit:     1,
 		stats:         newStoreStaticstics(),
+		regionFilters: regionFilters,
 		types:         []BalanceType{hotWriteRegionBalance},
 		r:             rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
@@ -158,26 +191,32 @@ func (h *balanceHotRegionsScheduler) dispatch(typ BalanceType, cluster schedule.
 }
 
 func (h *balanceHotRegionsScheduler) balanceHotReadRegions(cluster schedule.Cluster) []*schedule.Operator {
+	schedule.PluginsMapLock.RLock()
+	defer schedule.PluginsMapLock.RUnlock()
 	// balance by leader
 	srcRegion, newLeader := h.balanceByLeader(cluster, h.stats.readStatAsLeader)
 	if srcRegion != nil {
-		schedulerCounter.WithLabelValues(h.GetName(), "move_leader").Inc()
-		op := schedule.CreateTransferLeaderOperator("transfer-hot-read-leader", srcRegion, srcRegion.GetLeader().GetStoreId(), newLeader.GetStoreId(), schedule.OpHotRegion)
-		op.SetPriorityLevel(core.HighPriority)
-		return []*schedule.Operator{op}
+		if len(h.regionFilters) == 0 || (len(h.regionFilters) != 0 && schedule.RegionFilterSource(cluster, srcRegion, h.regionFilters, schedule.PluginsMap["Leader"].GetInterval(), schedule.PluginsMap["Leader"].GetRegionIDs())) {
+			schedulerCounter.WithLabelValues(h.GetName(), "move_leader").Inc()
+			op := schedule.CreateTransferLeaderOperator("transfer-hot-read-leader", srcRegion, srcRegion.GetLeader().GetStoreId(), newLeader.GetStoreId(), schedule.OpHotRegion)
+			op.SetPriorityLevel(core.HighPriority)
+			return []*schedule.Operator{op}
+		}
 	}
 
 	// balance by peer
 	srcRegion, srcPeer, destPeer := h.balanceByPeer(cluster, h.stats.readStatAsLeader)
 	if srcRegion != nil {
-		op, err := schedule.CreateMovePeerOperator("move-hot-read-region", cluster, srcRegion, schedule.OpHotRegion, srcPeer.GetStoreId(), destPeer.GetStoreId(), destPeer.GetId())
-		if err != nil {
-			schedulerCounter.WithLabelValues(h.GetName(), "create_operator_fail").Inc()
-			return nil
+		if len(h.regionFilters) == 0 || (len(h.regionFilters) != 0 && schedule.RegionFilterSource(cluster, srcRegion, h.regionFilters, schedule.PluginsMap["Leader"].GetInterval(), schedule.PluginsMap["Leader"].GetRegionIDs())) {
+			op, err := schedule.CreateMovePeerOperator("move-hot-read-region", cluster, srcRegion, schedule.OpHotRegion, srcPeer.GetStoreId(), destPeer.GetStoreId(), destPeer.GetId())
+			if err != nil {
+				schedulerCounter.WithLabelValues(h.GetName(), "create_operator_fail").Inc()
+				return nil
+			}
+			op.SetPriorityLevel(core.HighPriority)
+			schedulerCounter.WithLabelValues(h.GetName(), "move_peer").Inc()
+			return []*schedule.Operator{op}
 		}
-		op.SetPriorityLevel(core.HighPriority)
-		schedulerCounter.WithLabelValues(h.GetName(), "move_peer").Inc()
-		return []*schedule.Operator{op}
 	}
 	schedulerCounter.WithLabelValues(h.GetName(), "skip").Inc()
 	return nil
@@ -187,29 +226,35 @@ func (h *balanceHotRegionsScheduler) balanceHotReadRegions(cluster schedule.Clus
 const balanceHotRetryLimit = 10
 
 func (h *balanceHotRegionsScheduler) balanceHotWriteRegions(cluster schedule.Cluster) []*schedule.Operator {
+	schedule.PluginsMapLock.RLock()
+	defer schedule.PluginsMapLock.RUnlock()
 	for i := 0; i < balanceHotRetryLimit; i++ {
 		switch h.r.Int() % 2 {
 		case 0:
 			// balance by peer
 			srcRegion, srcPeer, destPeer := h.balanceByPeer(cluster, h.stats.writeStatAsPeer)
 			if srcRegion != nil {
-				op, err := schedule.CreateMovePeerOperator("move-hot-write-region", cluster, srcRegion, schedule.OpHotRegion, srcPeer.GetStoreId(), destPeer.GetStoreId(), destPeer.GetId())
-				if err != nil {
-					schedulerCounter.WithLabelValues(h.GetName(), "create_operator_fail").Inc()
-					return nil
+				if len(h.regionFilters) == 0 || (len(h.regionFilters) != 0 && schedule.RegionFilterSource(cluster, srcRegion, h.regionFilters, schedule.PluginsMap["Leader"].GetInterval(), schedule.PluginsMap["Leader"].GetRegionIDs())) {
+					op, err := schedule.CreateMovePeerOperator("move-hot-write-region", cluster, srcRegion, schedule.OpHotRegion, srcPeer.GetStoreId(), destPeer.GetStoreId(), destPeer.GetId())
+					if err != nil {
+						schedulerCounter.WithLabelValues(h.GetName(), "create_operator_fail").Inc()
+						return nil
+					}
+					op.SetPriorityLevel(core.HighPriority)
+					schedulerCounter.WithLabelValues(h.GetName(), "move_peer").Inc()
+					return []*schedule.Operator{op}
 				}
-				op.SetPriorityLevel(core.HighPriority)
-				schedulerCounter.WithLabelValues(h.GetName(), "move_peer").Inc()
-				return []*schedule.Operator{op}
 			}
 		case 1:
 			// balance by leader
 			srcRegion, newLeader := h.balanceByLeader(cluster, h.stats.writeStatAsLeader)
 			if srcRegion != nil {
-				schedulerCounter.WithLabelValues(h.GetName(), "move_leader").Inc()
-				op := schedule.CreateTransferLeaderOperator("transfer-hot-write-leader", srcRegion, srcRegion.GetLeader().GetStoreId(), newLeader.GetStoreId(), schedule.OpHotRegion)
-				op.SetPriorityLevel(core.HighPriority)
-				return []*schedule.Operator{op}
+				if len(h.regionFilters) == 0 || (len(h.regionFilters) != 0 && schedule.RegionFilterSource(cluster, srcRegion, h.regionFilters, schedule.PluginsMap["Leader"].GetInterval(), schedule.PluginsMap["Leader"].GetRegionIDs())) {
+					schedulerCounter.WithLabelValues(h.GetName(), "move_leader").Inc()
+					op := schedule.CreateTransferLeaderOperator("transfer-hot-write-leader", srcRegion, srcRegion.GetLeader().GetStoreId(), newLeader.GetStoreId(), schedule.OpHotRegion)
+					op.SetPriorityLevel(core.HighPriority)
+					return []*schedule.Operator{op}
+				}
 			}
 		}
 	}

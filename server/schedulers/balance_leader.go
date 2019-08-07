@@ -16,7 +16,7 @@ package schedulers
 import (
 	"strconv"
 
-	log "github.com/pingcap/log"
+	"github.com/pingcap/log"
 	"github.com/pingcap/pd/pkg/cache"
 	"github.com/pingcap/pd/server/core"
 	"github.com/pingcap/pd/server/schedule"
@@ -34,9 +34,10 @@ const balanceLeaderRetryLimit = 10
 
 type balanceLeaderScheduler struct {
 	*baseScheduler
-	selector     *schedule.BalanceSelector
-	taintStores  *cache.TTLUint64
-	opController *schedule.OperatorController
+	selector      *schedule.BalanceSelector
+	regionFilters []schedule.RegionFilter
+	taintStores   *cache.TTLUint64
+	opController  *schedule.OperatorController
 }
 
 // newBalanceLeaderScheduler creates a scheduler that tends to keep leaders on
@@ -47,10 +48,21 @@ func newBalanceLeaderScheduler(opController *schedule.OperatorController) schedu
 		schedule.StoreStateFilter{TransferLeader: true},
 		schedule.NewCacheFilter(taintStores),
 	}
+	regionFilters := []schedule.RegionFilter{}
+	//get func from plugin
+	//func : NewLeaderFilter()
+	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewLeaderFilter")
+	if err != nil {
+		log.Error("Plugin GetFunction err", zap.Error(err))
+	} else {
+		NewLeaderFilter := f.(func() schedule.RegionFilter)
+		regionFilters = append(regionFilters, NewLeaderFilter())
+	}
 	base := newBaseScheduler(opController)
 	s := &balanceLeaderScheduler{
 		baseScheduler: base,
 		selector:      schedule.NewBalanceSelector(core.LeaderKind, filters),
+		regionFilters: regionFilters,
 		taintStores:   taintStores,
 		opController:  opController,
 	}
@@ -125,8 +137,18 @@ func (l *balanceLeaderScheduler) Schedule(cluster schedule.Cluster) []*schedule.
 // It randomly selects a health region from the source store, then picks
 // the best follower peer and transfers the leader.
 func (l *balanceLeaderScheduler) transferLeaderOut(source *core.StoreInfo, cluster schedule.Cluster, opInfluence schedule.OpInfluence) []*schedule.Operator {
+	schedule.PluginsMapLock.RLock()
+	defer schedule.PluginsMapLock.RUnlock()
 	sourceID := source.GetID()
 	region := cluster.RandLeaderRegion(sourceID, core.HealthRegion())
+
+	//过滤与用户调度有冲突的region
+	if region != nil && l.regionFilters != nil {
+		if schedule.RegionFilterSource(cluster, region, l.regionFilters, schedule.PluginsMap["Leader"].GetInterval(), schedule.PluginsMap["Leader"].GetRegionIDs()) {
+			return nil
+		}
+	}
+
 	if region == nil {
 		log.Debug("store has no leader", zap.String("scheduler", l.GetName()), zap.Uint64("store-id", sourceID))
 		schedulerCounter.WithLabelValues(l.GetName(), "no_leader_region").Inc()
@@ -145,8 +167,19 @@ func (l *balanceLeaderScheduler) transferLeaderOut(source *core.StoreInfo, clust
 // It randomly selects a health region from the target store, then picks
 // the worst follower peer and transfers the leader.
 func (l *balanceLeaderScheduler) transferLeaderIn(target *core.StoreInfo, cluster schedule.Cluster, opInfluence schedule.OpInfluence) []*schedule.Operator {
+	schedule.PluginsMapLock.RLock()
+	defer schedule.PluginsMapLock.RUnlock()
+
 	targetID := target.GetID()
 	region := cluster.RandFollowerRegion(targetID, core.HealthRegion())
+
+	//过滤与用户调度有冲突的region
+	if region != nil && l.regionFilters != nil {
+		if schedule.RegionFilterSource(cluster, region, l.regionFilters, schedule.PluginsMap["Leader"].GetInterval(), schedule.PluginsMap["Leader"].GetRegionIDs()) {
+			return nil
+		}
+	}
+
 	if region == nil {
 		log.Debug("store has no follower", zap.String("scheduler", l.GetName()), zap.Uint64("store-id", targetID))
 		schedulerCounter.WithLabelValues(l.GetName(), "no_follower_region").Inc()

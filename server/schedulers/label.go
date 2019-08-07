@@ -28,6 +28,7 @@ func init() {
 
 type labelScheduler struct {
 	*baseScheduler
+	regionFilters []schedule.RegionFilter
 	selector *schedule.BalanceSelector
 }
 
@@ -38,8 +39,19 @@ func newLabelScheduler(opController *schedule.OperatorController) schedule.Sched
 	filters := []schedule.Filter{
 		schedule.StoreStateFilter{TransferLeader: true},
 	}
+	regionFilters := []schedule.RegionFilter{}
+	//get func from plugin
+	//func : NewLeaderFilter()
+	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewLeaderFilter")
+	if err != nil {
+		log.Error("Plugin GetFunction err", zap.Error(err))
+	} else {
+		NewLeaderFilter := f.(func() schedule.RegionFilter)
+		regionFilters = append(regionFilters, NewLeaderFilter())
+	}
 	return &labelScheduler{
 		baseScheduler: newBaseScheduler(opController),
+		regionFilters: regionFilters,
 		selector:      schedule.NewBalanceSelector(core.LeaderKind, filters),
 	}
 }
@@ -57,6 +69,8 @@ func (s *labelScheduler) IsScheduleAllowed(cluster schedule.Cluster) bool {
 }
 
 func (s *labelScheduler) Schedule(cluster schedule.Cluster) []*schedule.Operator {
+	schedule.PluginsMapLock.RLock()
+	defer schedule.PluginsMapLock.RUnlock()
 	schedulerCounter.WithLabelValues(s.GetName(), "schedule").Inc()
 	stores := cluster.GetStores()
 	rejectLeaderStores := make(map[uint64]struct{})
@@ -72,25 +86,27 @@ func (s *labelScheduler) Schedule(cluster schedule.Cluster) []*schedule.Operator
 	log.Debug("label scheduler reject leader store list", zap.Reflect("stores", rejectLeaderStores))
 	for id := range rejectLeaderStores {
 		if region := cluster.RandLeaderRegion(id); region != nil {
-			log.Debug("label scheduler selects region to transfer leader", zap.Uint64("region-id", region.GetID()))
-			excludeStores := make(map[uint64]struct{})
-			for _, p := range region.GetDownPeers() {
-				excludeStores[p.GetPeer().GetStoreId()] = struct{}{}
-			}
-			for _, p := range region.GetPendingPeers() {
-				excludeStores[p.GetStoreId()] = struct{}{}
-			}
-			filter := schedule.NewExcludedFilter(nil, excludeStores)
-			target := s.selector.SelectTarget(cluster, cluster.GetFollowerStores(region), filter)
-			if target == nil {
-				log.Debug("label scheduler no target found for region", zap.Uint64("region-id", region.GetID()))
-				schedulerCounter.WithLabelValues(s.GetName(), "no_target").Inc()
-				continue
-			}
+			if len(s.regionFilters) == 0 || (len(s.regionFilters) != 0 && schedule.RegionFilterSource(cluster, region, s.regionFilters, schedule.PluginsMap["Leader"].GetInterval(), schedule.PluginsMap["Leader"].GetRegionIDs())) {
+				log.Debug("label scheduler selects region to transfer leader", zap.Uint64("region-id", region.GetID()))
+				excludeStores := make(map[uint64]struct{})
+				for _, p := range region.GetDownPeers() {
+					excludeStores[p.GetPeer().GetStoreId()] = struct{}{}
+				}
+				for _, p := range region.GetPendingPeers() {
+					excludeStores[p.GetStoreId()] = struct{}{}
+				}
+				filter := schedule.NewExcludedFilter(nil, excludeStores)
+				target := s.selector.SelectTarget(cluster, cluster.GetFollowerStores(region), filter)
+				if target == nil {
+					log.Debug("label scheduler no target found for region", zap.Uint64("region-id", region.GetID()))
+					schedulerCounter.WithLabelValues(s.GetName(), "no_target").Inc()
+					continue
+				}
 
-			schedulerCounter.WithLabelValues(s.GetName(), "new_operator").Inc()
-			op := schedule.CreateTransferLeaderOperator("label-reject-leader", region, id, target.GetID(), schedule.OpLeader)
-			return []*schedule.Operator{op}
+				schedulerCounter.WithLabelValues(s.GetName(), "new_operator").Inc()
+				op := schedule.CreateTransferLeaderOperator("label-reject-leader", region, id, target.GetID(), schedule.OpLeader)
+				return []*schedule.Operator{op}
+			}
 		}
 	}
 	schedulerCounter.WithLabelValues(s.GetName(), "no_region").Inc()

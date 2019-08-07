@@ -59,6 +59,10 @@ func (mc *Cluster) ScanRegions(startKey []byte, limit int) []*core.RegionInfo {
 	return mc.Regions.ScanRange(startKey, limit)
 }
 
+func (mc *Cluster) ScanRangeWithEndKey(startKey, endKey []byte) []*core.RegionInfo {
+	return mc.Regions.ScanRangeWithEndKey(startKey, endKey)
+}
+
 // LoadRegion puts region info without leader
 func (mc *Cluster) LoadRegion(regionID uint64, followerIds ...uint64) {
 	//  regions load from etcd will have no leader

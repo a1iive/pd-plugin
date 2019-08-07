@@ -1,0 +1,6 @@
+enable = true
+
+[leader]
+keyStart = "a"
+keyEnd = "c"
+storeId = 1

@@ -52,6 +52,7 @@ func NewReplicaChecker(cluster schedule.Cluster, classifier namespace.Classifier
 
 // Check verifies a region's replicas, creating an schedule.Operator if need.
 func (r *ReplicaChecker) Check(region *core.RegionInfo) *schedule.Operator {
+	//TODO：处理move region需要维持的filter
 	checkerCounter.WithLabelValues("replica_checker", "check").Inc()
 	if op := r.checkDownPeer(region); op != nil {
 		checkerCounter.WithLabelValues("replica_checker", "new_operator").Inc()

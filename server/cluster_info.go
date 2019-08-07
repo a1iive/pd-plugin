@@ -297,6 +297,12 @@ func (c *clusterInfo) ScanRegions(startKey []byte, limit int) []*core.RegionInfo
 	return c.core.Regions.ScanRange(startKey, limit)
 }
 
+func (c *clusterInfo) ScanRangeWithEndKey(startKey, endKey []byte) []*core.RegionInfo {
+	c.RLock()
+	defer c.RUnlock()
+	return c.core.Regions.ScanRangeWithEndKey(startKey, endKey)
+}
+
 // GetAdjacentRegions returns region's info that is adjacent with specific region
 func (c *clusterInfo) GetAdjacentRegions(region *core.RegionInfo) (*core.RegionInfo, *core.RegionInfo) {
 	c.RLock()
