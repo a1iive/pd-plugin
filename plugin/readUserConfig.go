@@ -10,7 +10,7 @@ func ProduceScheduler(cfg schedule.Config, opController *schedule.OperatorContro
 	interval := cfg.GetInterval()
 	var schedules []schedule.Scheduler
 	schedules = append(schedules, newMoveLeaderUserScheduler(opController, regionIDs["Leader"], storeIDs["Leader"], interval["Leader"]))
-	//schedules = append(schedules, newTransferLeaderScheduler(opController, regionIds[1][0], storeIds[1][0]))
+	schedules = append(schedules, newMoveRegionUserScheduler(opController, regionIDs["Region"], storeIDs["Region"], interval["Region"]))
 	return schedules
 }
 

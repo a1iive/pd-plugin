@@ -18,8 +18,8 @@
 
 [Region] # move region
     Persist   = true
-    KeyStart  = "5566"
-    KeyEnd    = "7788"
+    KeyStart  = "757365727461626C653A7573657234323434383839313533373931343037373037"
+    KeyEnd    = "757365727461626C653A7573657238373036373639353831393732343031333937"
     StartTime = "2019-08-01T07:30:00-08:00"
     EndTime   = "2019-08-01T10:30:00-08:00"
     [[Region.Stores]]
@@ -32,3 +32,25 @@
         [[Region.Stores.StoreLabel]]
             Key   = "host"
             Value = "h1"
+    [[Region.Stores]]
+        [[Region.Stores.StoreLabel]]
+            Key   = "zone"
+            Value = "z2"
+        [[Region.Stores.StoreLabel]]
+            Key   = "rack"
+            Value = "r2"
+        [[Region.Stores.StoreLabel]]
+            Key   = "host"
+            Value = "h2"
+    [[Region.Stores]]
+        [[Region.Stores.StoreLabel]]
+            Key   = "zone"
+            Value = "z3"
+        [[Region.Stores.StoreLabel]]
+            Key   = "rack"
+            Value = "r3"
+        [[Region.Stores.StoreLabel]]
+            Key   = "host"
+            Value = "h3"
+
+
