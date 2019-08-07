@@ -5,21 +5,22 @@ import (
 	"plugin"
 	"sync"
 	"time"
-
+	
 	"github.com/pingcap/log"
 	"go.uber.org/zap"
 )
 
 type PluginInfo struct {
+	Persist   bool
 	KeyStart  string
 	KeyEnd    string
-	Interval  TimeInterval
+	Interval  *TimeInterval
 	RegionIDs []uint64
 	StoreIDs  []uint64
 }
 
 func (p *PluginInfo) GetInterval() *TimeInterval {
-	return &p.Interval
+	return p.Interval
 }
 
 func (p *PluginInfo) GetRegionIDs() []uint64 {
@@ -44,11 +45,11 @@ var PluginsMapLock = sync.RWMutex{}
 var PluginsMap = make(map[string]*PluginInfo)
 
 var PluginLock = sync.RWMutex{}
-var Plugin *plugin.Plugin= nil
+var Plugin *plugin.Plugin = nil
 
-func GetFunction(path string, funcName string) (plugin.Symbol, error){
+func GetFunction(path string, funcName string) (plugin.Symbol, error) {
 	PluginLock.Lock()
-	if Plugin == nil{
+	if Plugin == nil {
 		//open plugin
 		filePath, err := filepath.Abs(path)
 		if err != nil {
@@ -64,7 +65,6 @@ func GetFunction(path string, funcName string) (plugin.Symbol, error){
 		Plugin = p
 	}
 	PluginLock.Unlock()
-	log.Info("plugin unlock")
 	PluginLock.RLock()
 	defer PluginLock.RUnlock()
 	//get func from plugin

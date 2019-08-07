@@ -18,6 +18,7 @@ import (
 	"github.com/pingcap/pd/server/core"
 	"github.com/pingcap/pd/server/schedule"
 	"go.uber.org/zap"
+	"strings"
 )
 
 func init() {
@@ -29,7 +30,7 @@ func init() {
 type labelScheduler struct {
 	*baseScheduler
 	regionFilters []schedule.RegionFilter
-	selector *schedule.BalanceSelector
+	selector      *schedule.BalanceSelector
 }
 
 // LabelScheduler is mainly based on the store's label information for scheduling.
@@ -86,7 +87,17 @@ func (s *labelScheduler) Schedule(cluster schedule.Cluster) []*schedule.Operator
 	log.Debug("label scheduler reject leader store list", zap.Reflect("stores", rejectLeaderStores))
 	for id := range rejectLeaderStores {
 		if region := cluster.RandLeaderRegion(id); region != nil {
-			if len(s.regionFilters) == 0 || (len(s.regionFilters) != 0 && schedule.RegionFilterSource(cluster, region, s.regionFilters, schedule.PluginsMap["Leader"].GetInterval(), schedule.PluginsMap["Leader"].GetRegionIDs())) {
+			allow := true
+			if len(s.regionFilters) != 0 {
+				for str, pluginInfo := range schedule.PluginsMap{
+					ss := strings.Split(str, "-")
+					if ss[0] == "Leader" && schedule.RegionFilterSource(cluster, region, s.regionFilters, pluginInfo.GetInterval(), pluginInfo.GetRegionIDs()){
+						allow = false
+						break
+					}
+				}
+			}
+			if allow {
 				log.Debug("label scheduler selects region to transfer leader", zap.Uint64("region-id", region.GetID()))
 				excludeStores := make(map[uint64]struct{})
 				for _, p := range region.GetDownPeers() {

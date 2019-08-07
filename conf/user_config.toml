@@ -1,56 +1,91 @@
-[Leader] # move leader
+[Leaders]
+[[Leaders.Leader]] # moveleader
     Persist   = true
     KeyStart  = "757365727461626C653A7573657234323434383839313533373931343037373037"
-    KeyEnd    = "757365727461626C653A7573657238373036373639353831393732343031333937"    
+    KeyEnd    = "757365727461626C653A7573657235643637353232383738383832303830353737"   
     StartTime = "2019-08-05T07:30:00-08:00"
     EndTime   = "2019-08-16T10:30:00-08:00"
-    HighPerf  = false
-    [[Leader.Stores]]
-        [[Leader.Stores.StoreLabel]]
+    [[Leaders.Leader.Stores]]
+        [[Leaders.Leader.Stores.StoreLabel]]
             Key   = "zone"
-            Value = "z2"
-        [[Leader.Stores.StoreLabel]]
+            Value = "z4"
+        [[Leaders.Leader.Stores.StoreLabel]]
             Key   = "rack"
-            Value = "r2"
-        [[Leader.Stores.StoreLabel]]
+            Value = "r4"
+        [[Leaders.Leader.Stores.StoreLabel]]
             Key   = "host"
-            Value = "h2"
-
-[Region] # move region
+            Value = "h4"
+    [[Leaders.Leader.Stores]]
+        [[Leaders.Leader.Stores.StoreLabel]]
+            Key   = "zone"
+            Value = "z5"
+        [[Leaders.Leader.Stores.StoreLabel]]
+            Key   = "rack"
+            Value = "r5"
+        [[Leaders.Leader.Stores.StoreLabel]]
+            Key   = "host"
+            Value = "h5"
+[[Leaders.Leader]] # moveleader
     Persist   = true
-    KeyStart  = "757365727461626C653A7573657234323434383839313533373931343037373037"
-    KeyEnd    = "757365727461626C653A7573657238373036373639353831393732343031333937"
-    StartTime = "2019-08-01T07:30:00-08:00"
-    EndTime   = "2019-08-01T10:30:00-08:00"
-    [[Region.Stores]]
-        [[Region.Stores.StoreLabel]]
+    KeyStart  = "757365727461626C653A7573657235643637353232383738383832303830353737"
+    KeyEnd    = "757365727461626C653A7573657236943637353232383738383832303830353737"   
+    StartTime = "2019-08-05T07:30:00-08:00"
+    EndTime   = "2019-08-16T10:30:00-08:00"
+    [[Leaders.Leader.Stores]]
+        [[Leaders.Leader.Stores.StoreLabel]]
+            Key   = "zone"
+            Value = "z4"
+        [[Leaders.Leader.Stores.StoreLabel]]
+            Key   = "rack"
+            Value = "r4"
+        [[Leaders.Leader.Stores.StoreLabel]]
+            Key   = "host"
+            Value = "h4"
+    [[Leaders.Leader.Stores]]
+        [[Leaders.Leader.Stores.StoreLabel]]
+            Key   = "zone"
+            Value = "z5"
+        [[Leaders.Leader.Stores.StoreLabel]]
+            Key   = "rack"
+            Value = "r5"
+        [[Leaders.Leader.Stores.StoreLabel]]
+            Key   = "host"
+            Value = "h5"
+
+[Regions]
+[[Regions.Region]] # moveregion
+    Persist   = true
+    KeyStart  = "757365727461626C653A7573657236943637353232383738383832303830353737"
+    KeyEnd    = "757365727461626C653A7573657238773036373639353831393732343031333937"
+    StartTime = "2019-08-05T07:30:00-08:00"
+    EndTime   = "2019-08-16T10:30:00-08:00"
+    [[Regions.Region.Stores]]
+        [[Regions.Region.Stores.StoreLabel]]
             Key   = "zone"
             Value = "z1"
-        [[Region.Stores.StoreLabel]]
+        [[Regions.Region.Stores.StoreLabel]]
             Key   = "rack"
             Value = "r1"
-        [[Region.Stores.StoreLabel]]
+        [[Regions.Region.Stores.StoreLabel]]
             Key   = "host"
             Value = "h1"
-    [[Region.Stores]]
-        [[Region.Stores.StoreLabel]]
+    [[Regions.Region.Stores]]
+        [[Regions.Region.Stores.StoreLabel]]
             Key   = "zone"
             Value = "z2"
-        [[Region.Stores.StoreLabel]]
+        [[Regions.Region.Stores.StoreLabel]]
             Key   = "rack"
             Value = "r2"
-        [[Region.Stores.StoreLabel]]
+        [[Regions.Region.Stores.StoreLabel]]
             Key   = "host"
             Value = "h2"
-    [[Region.Stores]]
-        [[Region.Stores.StoreLabel]]
+    [[Regions.Region.Stores]]
+        [[Regions.Region.Stores.StoreLabel]]
             Key   = "zone"
             Value = "z3"
-        [[Region.Stores.StoreLabel]]
+        [[Regions.Region.Stores.StoreLabel]]
             Key   = "rack"
             Value = "r3"
-        [[Region.Stores.StoreLabel]]
+        [[Regions.Region.Stores.StoreLabel]]
             Key   = "host"
             Value = "h3"
-
-

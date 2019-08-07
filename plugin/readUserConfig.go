@@ -2,24 +2,23 @@ package main
 
 import (
 	"github.com/pingcap/pd/server/schedule"
+	"strings"
 )
 
 func ProduceScheduler(cfg schedule.Config, opController *schedule.OperatorController, cluster schedule.Cluster) []schedule.Scheduler {
-	storeIDs := cfg.GetStoreId(cluster)
-	regionIDs := cfg.GetRegionId(cluster)
-	interval := cfg.GetInterval()
+	storeMap := cfg.GetStoreId(cluster)
+	regionMap := cfg.GetRegionId(cluster)
+	intervalMaps := cfg.GetInterval()
 	var schedules []schedule.Scheduler
-	schedules = append(schedules, newMoveLeaderUserScheduler(opController, regionIDs["Leader"], storeIDs["Leader"], interval["Leader"]))
-	schedules = append(schedules, newMoveRegionUserScheduler(opController, regionIDs["Region"], storeIDs["Region"], interval["Region"]))
+	for str, storeIDs := range storeMap {
+		s := strings.Split(str, "-")
+		if s[0] == "Leader" {
+			name := "move-leader-use-scheduler-" + s[1]
+			schedules = append(schedules, newMoveLeaderUserScheduler(opController, name, regionMap[str], storeIDs, intervalMaps[str]))
+		}else {
+			name := "move-region-use-scheduler-" + s[1]
+			schedules = append(schedules, newMoveRegionUserScheduler(opController, name, regionMap[str], storeIDs, intervalMaps[str]))
+		}
+	}
 	return schedules
-}
-
-func ProduceOperator(cfg schedule.Config, opController *schedule.OperatorController, cluster schedule.Cluster) []*schedule.Operator {
-	storeIds := cfg.GetStoreId(cluster)
-	regionIds := cfg.GetRegionId(cluster)
-	var operators []*schedule.Operator
-	newMoveLeaderUserScheduler(opController, regionIds["Leader"], storeIds["Leader"], nil)
-	operators = append(operators, userScheduler1.Schedule(cluster)...)
-	operators = append(operators, userScheduler2.Schedule(cluster)...)
-	return operators
 }

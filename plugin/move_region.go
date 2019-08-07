@@ -1,12 +1,15 @@
 package main
 
 import (
+	"github.com/pingcap/pd/server/core"
 	"github.com/pingcap/pd/server/schedule"
 	"time"
 )
 
 type moveRegionUserScheduler struct {
 	*userBaseScheduler
+	name         string
+	opController *schedule.OperatorController
 	regionIDs    []uint64
 	storeIDs     []uint64
 	timeInterval *schedule.TimeInterval
@@ -15,23 +18,24 @@ type moveRegionUserScheduler struct {
 
 func init() {
 	schedule.RegisterScheduler("move-region-user", func(opController *schedule.OperatorController, args []string) (schedule.Scheduler, error) {
-		return newMoveRegionUserScheduler(opController, []uint64{}, []uint64{}, nil), nil
+		return newMoveRegionUserScheduler(opController, "", []uint64{}, []uint64{}, nil), nil
 	})
 }
 
-func newMoveRegionUserScheduler(opController *schedule.OperatorController, regionIDs []uint64, storeIDs []uint64, interval *schedule.TimeInterval) schedule.Scheduler {
+func newMoveRegionUserScheduler(opController *schedule.OperatorController, name string, regionIDs []uint64, storeIDs []uint64, interval *schedule.TimeInterval) schedule.Scheduler {
 	filters := []schedule.Filter{
 		schedule.StoreStateFilter{MoveRegion: true},
 	}
 	base := newUserBaseScheduler(opController)
-	userScheduler2 = moveRegionUserScheduler{
+	return &moveRegionUserScheduler{
 		userBaseScheduler: base,
+		name:              name,
 		regionIDs:         regionIDs,
 		storeIDs:          storeIDs,
 		timeInterval:      interval,
 		filters:           filters,
+		opController:      opController,
 	}
-	return &userScheduler2
 }
 
 func (r *moveRegionUserScheduler) GetName() string {
@@ -66,24 +70,35 @@ func (r *moveRegionUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 
 	for _, regionID := range r.regionIDs {
 		region := cluster.GetRegion(regionID)
-		replicas := len(region.GetStoreIds())
-		for storeID := range region.GetStoreIds() {
-			if replicas > len(r.storeIDs) {
-				if _, ok := storeIDs[storeID]; !ok {
-					storeIDs[storeID] = struct{}{}
+		if !r.allExist(r.storeIDs, region){
+			replicas := len(region.GetStoreIds())
+			for storeID := range region.GetStoreIds() {
+				if replicas > len(r.storeIDs) {
+					if _, ok := storeIDs[storeID]; !ok {
+						storeIDs[storeID] = struct{}{}
+					}
+				} else {
+					break
 				}
-			} else {
-				break
 			}
+			op, err := schedule.CreateMoveRegionOperator("move-region-user", cluster, region, schedule.OpAdmin, storeIDs)
+			if err != nil {
+				continue
+			}
+			ops = append(ops, op)
+			return ops
 		}
-
-		op, err := schedule.CreateMoveRegionOperator("move-region-user", cluster, region, schedule.OpAdmin, storeIDs)
-		if err != nil {
-			continue
-		}
-		ops = append(ops, op)
 	}
 	return ops
 }
 
-var userScheduler2 moveRegionUserScheduler
+func (r *moveRegionUserScheduler) allExist(storeIDs []uint64,region *core.RegionInfo) bool{
+	for _, storeID := range storeIDs{
+		if _, ok := region.GetStoreIds()[storeID]; ok{
+			continue
+		}else {
+			return false
+		}
+	}
+	return true
+}

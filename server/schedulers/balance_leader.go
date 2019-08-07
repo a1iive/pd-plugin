@@ -15,6 +15,7 @@ package schedulers
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/pingcap/log"
 	"github.com/pingcap/pd/pkg/cache"
@@ -142,18 +143,22 @@ func (l *balanceLeaderScheduler) transferLeaderOut(source *core.StoreInfo, clust
 	sourceID := source.GetID()
 	region := cluster.RandLeaderRegion(sourceID, core.HealthRegion())
 
-	//过滤与用户调度有冲突的region
-	if region != nil && l.regionFilters != nil {
-		if schedule.RegionFilterSource(cluster, region, l.regionFilters, schedule.PluginsMap["Leader"].GetInterval(), schedule.PluginsMap["Leader"].GetRegionIDs()) {
-			return nil
-		}
-	}
-
 	if region == nil {
 		log.Debug("store has no leader", zap.String("scheduler", l.GetName()), zap.Uint64("store-id", sourceID))
 		schedulerCounter.WithLabelValues(l.GetName(), "no_leader_region").Inc()
 		return nil
 	}
+
+	//过滤与用户leader调度有冲突的region
+	if len(l.regionFilters) != 0 {
+		for str, pluginInfo := range schedule.PluginsMap {
+			s := strings.Split(str, "-")
+			if s[0] == "Leader" && schedule.RegionFilterSource(cluster, region, l.regionFilters, pluginInfo.GetInterval(), pluginInfo.GetRegionIDs()) {
+				return nil
+			}
+		}
+	}
+
 	target := l.selector.SelectTarget(cluster, cluster.GetFollowerStores(region))
 	if target == nil {
 		log.Debug("region has no target store", zap.String("scheduler", l.GetName()), zap.Uint64("region-id", region.GetID()))
@@ -173,18 +178,22 @@ func (l *balanceLeaderScheduler) transferLeaderIn(target *core.StoreInfo, cluste
 	targetID := target.GetID()
 	region := cluster.RandFollowerRegion(targetID, core.HealthRegion())
 
-	//过滤与用户调度有冲突的region
-	if region != nil && l.regionFilters != nil {
-		if schedule.RegionFilterSource(cluster, region, l.regionFilters, schedule.PluginsMap["Leader"].GetInterval(), schedule.PluginsMap["Leader"].GetRegionIDs()) {
-			return nil
-		}
-	}
-
 	if region == nil {
 		log.Debug("store has no follower", zap.String("scheduler", l.GetName()), zap.Uint64("store-id", targetID))
 		schedulerCounter.WithLabelValues(l.GetName(), "no_follower_region").Inc()
 		return nil
 	}
+
+	//过滤与用户leader调度有冲突的region
+	if len(l.regionFilters) != 0 {
+		for str, pluginInfo := range schedule.PluginsMap {
+			s := strings.Split(str, "-")
+			if s[0] == "Leader" && schedule.RegionFilterSource(cluster, region, l.regionFilters, pluginInfo.GetInterval(), pluginInfo.GetRegionIDs()) {
+				return nil
+			}
+		}
+	}
+
 	source := cluster.GetStore(region.GetLeader().GetStoreId())
 	if source == nil {
 		log.Debug("region has no leader", zap.String("scheduler", l.GetName()), zap.Uint64("region-id", region.GetID()))

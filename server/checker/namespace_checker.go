@@ -62,10 +62,12 @@ func (n *NamespaceChecker) Check(region *core.RegionInfo) *schedule.Operator {
 	if !n.cluster.IsNamespaceRelocationEnabled() {
 		return nil
 	}
-	//TODO: 如果是leader的filter,除leader peer外其余peer可以继续
+	//skip user regions
 	if len(n.regionFilters) != 0 {
-		if schedule.RegionFilterSource(n.cluster, region, n.regionFilters, schedule.PluginsMap["Leader"].GetInterval(), schedule.PluginsMap["Leader"].GetRegionIDs()) {
-			return nil
+		for _, pluginInfo := range schedule.PluginsMap{
+			if  schedule.RegionFilterSource(n.cluster, region, n.regionFilters, pluginInfo.GetInterval(), pluginInfo.GetRegionIDs()){
+				return nil
+			}
 		}
 	}
 
