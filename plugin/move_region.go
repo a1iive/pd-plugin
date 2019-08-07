@@ -3,12 +3,13 @@ package main
 import (
 	"github.com/pingcap/pd/server/core"
 	"github.com/pingcap/pd/server/schedule"
+	"github.com/pingcap/log"
+	"go.uber.org/zap"
 	"time"
 )
 
 type moveRegionUserScheduler struct {
 	*userBaseScheduler
-	name         string
 	opController *schedule.OperatorController
 	regionIDs    []uint64
 	storeIDs     []uint64
@@ -18,18 +19,18 @@ type moveRegionUserScheduler struct {
 
 func init() {
 	schedule.RegisterScheduler("move-region-user", func(opController *schedule.OperatorController, args []string) (schedule.Scheduler, error) {
-		return newMoveRegionUserScheduler(opController, "", []uint64{}, []uint64{}, nil), nil
+		return newMoveRegionUserScheduler(opController, []uint64{}, []uint64{}, nil), nil
+
 	})
 }
 
-func newMoveRegionUserScheduler(opController *schedule.OperatorController, name string, regionIDs []uint64, storeIDs []uint64, interval *schedule.TimeInterval) schedule.Scheduler {
+func newMoveRegionUserScheduler(opController *schedule.OperatorController, regionIDs []uint64, storeIDs []uint64, interval *schedule.TimeInterval) schedule.Scheduler {
 	filters := []schedule.Filter{
 		schedule.StoreStateFilter{MoveRegion: true},
 	}
 	base := newUserBaseScheduler(opController)
 	return &moveRegionUserScheduler{
 		userBaseScheduler: base,
-		name:              name,
 		regionIDs:         regionIDs,
 		storeIDs:          storeIDs,
 		timeInterval:      interval,
@@ -57,6 +58,9 @@ func (r *moveRegionUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 			return nil
 		}
 	}
+	
+	log.Info("move region schedule run", zap.Int("len of region", len(r.regionIDs)))
+	log.Info("move region schedule run", zap.Int("len of store", len(r.storeIDs)))
 	var ops []*schedule.Operator
 	var storeIDs = make(map[uint64]struct{})
 
@@ -69,6 +73,7 @@ func (r *moveRegionUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 	}
 
 	for _, regionID := range r.regionIDs {
+		log.Info("move region schedule", zap.Uint64("try region", regionID))
 		region := cluster.GetRegion(regionID)
 		if !r.allExist(r.storeIDs, region){
 			replicas := len(region.GetStoreIds())
