@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"time"
 
 	"github.com/pingcap/log"
@@ -23,21 +24,21 @@ type moveLeaderUserScheduler struct {
 
 func init() {
 	schedule.RegisterScheduler("move-leader-user", func(opController *schedule.OperatorController, args []string) (schedule.Scheduler, error) {
-		return newMoveLeaderUserScheduler(opController, "", []uint64{}, []uint64{}, nil), nil
+		return newMoveLeaderUserScheduler(opController, "", nil), nil
 	})
 }
 
-func newMoveLeaderUserScheduler(opController *schedule.OperatorController, name string, regionIDs []uint64, storeIDs []uint64, interval *schedule.TimeInterval) schedule.Scheduler {
+func newMoveLeaderUserScheduler(opController *schedule.OperatorController, name string, interval *schedule.TimeInterval) schedule.Scheduler {
 	filters := []schedule.Filter{
 		schedule.StoreStateFilter{TransferLeader: true},
 	}
-	regionFilters := []schedule.RegionFilter{NewLeaderFilter(),}
+	regionFilters := []schedule.RegionFilter{NewLeaderFilter()}
 	base := newUserBaseScheduler(opController)
 	return &moveLeaderUserScheduler{
 		userBaseScheduler: base,
 		name:              name,
-		regionIDs:         regionIDs,
-		storeIDs:          storeIDs,
+		regionIDs:         []uint64{},
+		storeIDs:          []uint64{},
 		storeSeq:          0,
 		timeInterval:      interval,
 		filters:           filters,
@@ -59,16 +60,22 @@ func (l *moveLeaderUserScheduler) IsScheduleAllowed(cluster schedule.Cluster) bo
 }
 
 func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule.Operator {
+	schedule.PluginsMapLock.RLock()
+	defer schedule.PluginsMapLock.RUnlock()
+
 	if l.timeInterval != nil {
 		currentTime := time.Now()
 		if currentTime.After(l.timeInterval.End) || l.timeInterval.Begin.After(currentTime) {
 			return nil
 		}
 	}
-	
-	var ops []*schedule.Operator
+
+	ss := strings.Split(l.name, "-")
+	l.regionIDs = schedule.PluginsMap["Leader-"+ss[4]].GetRegionIDs()
+	l.storeIDs = schedule.PluginsMap["Leader-"+ss[4]].GetStoreIDs()
+
 	if len(l.storeIDs) == 0 {
-		return ops
+		return nil
 	}
 	for _, regionID := range l.regionIDs {
 		region := cluster.GetRegion(regionID)
@@ -82,8 +89,20 @@ func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 			continue
 		}
 		//如果leader不在选定stores上
-		if !l.isExist(sourceID, l.storeIDs) {
+		if !l.isExists(sourceID, l.storeIDs) {
 			targetID := l.storeIDs[l.storeSeq]
+			for str, pluginInfo := range schedule.PluginsMap {
+				s := strings.Split(str, "-")
+				if s[0] == "Region" {
+					if l.isExists(regionID, pluginInfo.GetRegionIDs()) {
+						overlap := IfOverlap(l.storeIDs, pluginInfo.GetStoreIDs())
+						if len(overlap) != 0 {
+							targetID = overlap[0]
+							break
+						}
+					}
+				}
+			}
 			if l.storeSeq < len(l.storeIDs)-1 {
 				l.storeSeq++
 			} else {
@@ -97,8 +116,7 @@ func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 				//target store has region peer, so transfer leader
 				op := schedule.CreateTransferLeaderOperator("move-leader-user", region, sourceID, targetID, schedule.OpLeader)
 				op.SetPriorityLevel(core.HighPriority)
-				ops = append(ops, op)
-				return ops
+				return []*schedule.Operator{op}
 			} else {
 				//target store doesn't have region peer, so move leader
 				destPeer, err := cluster.AllocPeer(targetID)
@@ -111,17 +129,16 @@ func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 					continue
 				}
 				op.SetPriorityLevel(core.HighPriority)
-				ops = append(ops, op)
-				return ops
+				return []*schedule.Operator{op}
 			}
 		}
 	}
-	return ops
+	return nil
 }
 
-func (l *moveLeaderUserScheduler) isExist(storeID uint64, storeIDs []uint64) bool {
-	for _, id := range storeIDs {
-		if id == storeID {
+func (l *moveLeaderUserScheduler) isExists(ID uint64, IDs []uint64) bool {
+	for _, id := range IDs {
+		if id == ID {
 			return true
 		}
 	}

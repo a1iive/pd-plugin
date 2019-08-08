@@ -1,11 +1,13 @@
 package schedule
 
 import (
+	"encoding/hex"
+	"github.com/pingcap/pd/server/core"
 	"path/filepath"
 	"plugin"
 	"sync"
 	"time"
-	
+
 	"github.com/pingcap/log"
 	"go.uber.org/zap"
 )
@@ -15,6 +17,7 @@ type PluginInfo struct {
 	KeyStart  string
 	KeyEnd    string
 	Interval  *TimeInterval
+	Stores    []StoreLabels
 	RegionIDs []uint64
 	StoreIDs  []uint64
 }
@@ -31,9 +34,46 @@ func (p *PluginInfo) GetStoreIDs() []uint64 {
 	return p.StoreIDs
 }
 
+func (p *PluginInfo) UpdateRegionIDs(cluster Cluster) {
+	p.RegionIDs = []uint64{}
+	//decode key form string to []byte
+	startKey, err := hex.DecodeString(p.KeyStart)
+	if err != nil {
+		log.Error("can not decode", zap.String("key:", p.KeyStart))
+	}
+	endKey, err := hex.DecodeString(p.KeyEnd)
+	if err != nil {
+		log.Info("can not decode", zap.String("key:", p.KeyEnd))
+	}
+
+	lastKey := []byte{}
+	regions := cluster.ScanRangeWithEndKey(startKey, endKey)
+	for _, region := range regions {
+		p.RegionIDs = append(p.RegionIDs, region.GetID())
+		lastKey = region.GetEndKey()
+	}
+	lastRegion := cluster.ScanRegions(lastKey, 1)
+	if len(lastRegion) != 0 {
+		p.RegionIDs = append(p.RegionIDs, lastRegion[0].GetID())
+	}
+}
+
+func (p *PluginInfo) UpdateStoreIDs(cluster Cluster) {
+	p.StoreIDs = []uint64{}
+	for _, s := range p.Stores {
+		if store := GetStoreByLabel(cluster, s.StoreLabel); store != nil {
+			p.StoreIDs = append(p.StoreIDs, store.GetID())
+		}
+	}
+}
+
 type Label struct {
 	Key   string
 	Value string
+}
+
+type StoreLabels struct {
+	StoreLabel []Label
 }
 
 type TimeInterval struct {
@@ -74,4 +114,24 @@ func GetFunction(path string, funcName string) (plugin.Symbol, error) {
 		return nil, err
 	}
 	return f, nil
+}
+
+func GetStoreByLabel(cluster Cluster, storeLabel []Label) *core.StoreInfo {
+	length := len(storeLabel)
+	for _, store := range cluster.GetStores() {
+		sum := 0
+		storeLabels := store.GetMeta().Labels
+		for _, label := range storeLabels {
+			for _, myLabel := range storeLabel {
+				if myLabel.Key == label.Key && myLabel.Value == label.Value {
+					sum++
+					continue
+				}
+			}
+		}
+		if sum == length {
+			return store
+		}
+	}
+	return nil
 }
