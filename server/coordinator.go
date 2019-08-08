@@ -274,10 +274,12 @@ func (c *coordinator) readUserConfig() {
 	ProduceScheduler := f2.(func(schedule.Config, *schedule.OperatorController, schedule.Cluster) []schedule.Scheduler)
 
 	userConfig := NewUserConfig()
-	schedulers := ProduceScheduler(userConfig, c.opController, c.cluster)
-	for _, s := range schedulers {
-		if err = c.addUserScheduler(s); err != nil {
-			log.Error("can not add scheduler", zap.String("scheduler-name", s.GetName()), zap.Error(err))
+	if userConfig.LoadConfig(){
+		schedulers := ProduceScheduler(userConfig, c.opController, c.cluster)
+		for _, s := range schedulers {
+			if err = c.addUserScheduler(s); err != nil {
+				log.Error("can not add scheduler", zap.String("scheduler-name", s.GetName()), zap.Error(err))
+			}
 		}
 	}
 	//make chan to get signal from user which means user config changed
@@ -287,13 +289,15 @@ func (c *coordinator) readUserConfig() {
 	for {
 		<-s
 		log.Info("user config changed")
-		userConfig.LoadConfig()
-		schedulers := ProduceScheduler(userConfig, c.opController, c.cluster)
-		for _, s := range schedulers {
-			if err = c.addUserScheduler(s); err != nil {
-				log.Error("can not add scheduler", zap.String("scheduler-name", s.GetName()), zap.Error(err))
+		if userConfig.LoadConfig(){
+			schedulers := ProduceScheduler(userConfig, c.opController, c.cluster)
+			for _, s := range schedulers {
+				if err = c.addUserScheduler(s); err != nil {
+					log.Error("can not add scheduler", zap.String("scheduler-name", s.GetName()), zap.Error(err))
+				}
 			}
 		}
+		
 	}
 }
 

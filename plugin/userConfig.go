@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/hex"
-	"github.com/pingcap/pd/server/core"
 	"github.com/pingcap/pd/server/schedule"
 	"path/filepath"
 	"strconv"
@@ -37,7 +36,7 @@ type moveLeader struct {
 	Persist   bool
 	KeyStart  string
 	KeyEnd    string
-	Stores    []stores
+	Stores    []schedule.StoreLabels
 	StartTime time.Time
 	EndTime   time.Time
 }
@@ -46,13 +45,9 @@ type moveRegion struct {
 	Persist   bool
 	KeyStart  string
 	KeyEnd    string
-	Stores    []stores
+	Stores    []schedule.StoreLabels
 	StartTime time.Time
 	EndTime   time.Time
-}
-
-type stores struct {
-	StoreLabel []schedule.Label
 }
 
 func NewUserConfig() schedule.Config {
@@ -61,25 +56,29 @@ func NewUserConfig() schedule.Config {
 		version: 1,
 		cfg:     nil,
 	}
-	ret.LoadConfig()
 	return ret
 }
 
-func (uc *userConfig) LoadConfig() {
+func (uc *userConfig) LoadConfig() bool {
 	filePath, err := filepath.Abs("./conf/user_config.toml")
 	if err != nil {
 		log.Error("open file failed", zap.Error(err))
+		return false
 	}
 	log.Info("parse toml file once. ", zap.String("filePath", filePath))
 	cfg := new(dispatchConfig)
 	if _, err := toml.DecodeFile(filePath, cfg); err != nil {
 		log.Error("parse user config failed", zap.Error(err))
+		return false
 	}
 	uc.cfgLock.Lock()
 	defer uc.cfgLock.Unlock()
 	schedule.PluginsMapLock.Lock()
 	defer schedule.PluginsMapLock.Unlock()
 	uc.cfg = cfg
+	if uc.cfg != nil && uc.IfConflict() {
+		return false
+	}
 	uc.version++
 
 	for i, info := range uc.cfg.Leaders.Leader {
@@ -88,6 +87,7 @@ func (uc *userConfig) LoadConfig() {
 			KeyStart:  info.KeyStart,
 			KeyEnd:    info.KeyEnd,
 			Interval:  &schedule.TimeInterval{Begin: info.StartTime, End: info.EndTime},
+			Stores:    info.Stores,
 			RegionIDs: []uint64{},
 			StoreIDs:  []uint64{},
 		}
@@ -101,36 +101,32 @@ func (uc *userConfig) LoadConfig() {
 			KeyStart:  info.KeyStart,
 			KeyEnd:    info.KeyEnd,
 			Interval:  &schedule.TimeInterval{Begin: info.StartTime, End: info.EndTime},
+			Stores:    info.Stores,
 			RegionIDs: []uint64{},
 			StoreIDs:  []uint64{},
 		}
 		str := "Region-" + strconv.Itoa(i)
 		schedule.PluginsMap[str] = pi
 	}
-
+	return true
 }
 
 func (uc *userConfig) GetStoreId(cluster schedule.Cluster) map[string][]uint64 {
-	schedule.PluginsMapLock.Lock()
-	defer schedule.PluginsMapLock.Unlock()
-
 	ret := make(map[string][]uint64)
 	for i, Leader := range uc.cfg.Leaders.Leader {
 		for _, s := range Leader.Stores {
-			if store := uc.GetStoreByLabel(cluster, s.StoreLabel); store != nil {
+			if store := schedule.GetStoreByLabel(cluster, s.StoreLabel); store != nil {
 				str := "Leader-" + strconv.Itoa(i)
-				schedule.PluginsMap[str].StoreIDs = append(schedule.PluginsMap[str].StoreIDs, store.GetID())
-				log.Info("GetStoreId-MoveLeader", zap.Uint64("store-id", store.GetID()))
+				log.Info(str, zap.Uint64("store-id", store.GetID()))
 				ret[str] = append(ret[str], store.GetID())
 			}
 		}
 	}
 	for i, Region := range uc.cfg.Regions.Region {
 		for _, s := range Region.Stores {
-			if store := uc.GetStoreByLabel(cluster, s.StoreLabel); store != nil {
+			if store := schedule.GetStoreByLabel(cluster, s.StoreLabel); store != nil {
 				str := "Region-" + strconv.Itoa(i)
-				schedule.PluginsMap[str].StoreIDs = append(schedule.PluginsMap[str].StoreIDs, store.GetID())
-				log.Info("GetStoreId-MoveRegion", zap.Uint64("store-id", store.GetID()))
+				log.Info(str, zap.Uint64("store-id", store.GetID()))
 				ret[str] = append(ret[str], store.GetID())
 			}
 		}
@@ -139,9 +135,6 @@ func (uc *userConfig) GetStoreId(cluster schedule.Cluster) map[string][]uint64 {
 }
 
 func (uc *userConfig) GetRegionId(cluster schedule.Cluster) map[string][]uint64 {
-	schedule.PluginsMapLock.Lock()
-	defer schedule.PluginsMapLock.Unlock()
-
 	ret := make(map[string][]uint64)
 
 	for i, Leader := range uc.cfg.Leaders.Leader {
@@ -157,24 +150,19 @@ func (uc *userConfig) GetRegionId(cluster schedule.Cluster) map[string][]uint64 
 			log.Info("can not decode", zap.String("key:", Leader.KeyEnd))
 			continue
 		}
-		
-		var lastKey []byte
+
+		lastKey := []byte{}
 		regions := cluster.ScanRangeWithEndKey(startKey, endKey)
 		for _, region := range regions {
-			log.Info("GetRegionId-MoveLeader", zap.Uint64("region-id", region.GetID()))
+			log.Info(str, zap.Uint64("region-id", region.GetID()))
 			ret[str] = append(ret[str], region.GetID())
-			schedule.PluginsMap[str].RegionIDs = append(schedule.PluginsMap[str].RegionIDs, region.GetID())
-			log.Info("Region(Leader)",zap.String("end key",hex.EncodeToString(region.GetEndKey())))
 			lastKey = region.GetEndKey()
 		}
 		lastRegion := cluster.ScanRegions(lastKey, 1)
-		if len(lastRegion) != 0{
-			log.Info("Region(Region)",zap.Uint64("last region",lastRegion[0].GetID()))
+		if len(lastRegion) != 0 {
+			log.Info(str, zap.Uint64("region-id", lastRegion[0].GetID()))
 			ret[str] = append(ret[str], lastRegion[0].GetID())
-			schedule.PluginsMap[str].RegionIDs = append(schedule.PluginsMap[str].RegionIDs, lastRegion[0].GetID())
 		}
-		log.Info("PluginsMap",zap.String("key",str))
-		log.Info("PluginsMap",zap.Uint64s("regions",schedule.PluginsMap[str].RegionIDs))
 	}
 
 	for i, Region := range uc.cfg.Regions.Region {
@@ -191,23 +179,18 @@ func (uc *userConfig) GetRegionId(cluster schedule.Cluster) map[string][]uint64 
 			continue
 		}
 
-		var lastKey []byte
+		lastKey := []byte{}
 		regions := cluster.ScanRangeWithEndKey(startKey, endKey)
 		for _, region := range regions {
-			log.Info("GetRegionId-MoveRegion", zap.Uint64("region-id", region.GetID()))
+			log.Info(str, zap.Uint64("region-id", region.GetID()))
 			ret[str] = append(ret[str], region.GetID())
-			schedule.PluginsMap[str].RegionIDs = append(schedule.PluginsMap[str].RegionIDs, region.GetID())
-			log.Info("Region(Region)",zap.String("end key",hex.EncodeToString(region.GetEndKey())))
 			lastKey = region.GetEndKey()
 		}
 		lastRegion := cluster.ScanRegions(lastKey, 1)
-		if len(lastRegion) != 0{
-			log.Info("Region(Region)",zap.Uint64("last region",lastRegion[0].GetID()))
+		if len(lastRegion) != 0 {
+			log.Info(str, zap.Uint64("region-id", lastRegion[0].GetID()))
 			ret[str] = append(ret[str], lastRegion[0].GetID())
-			schedule.PluginsMap[str].RegionIDs = append(schedule.PluginsMap[str].RegionIDs, lastRegion[0].GetID())
 		}
-		log.Info("PluginsMap",zap.String("key",str))
-		log.Info("PluginsMap",zap.Uint64s("regions",schedule.PluginsMap[str].RegionIDs))
 	}
 
 	return ret
@@ -234,23 +217,44 @@ func (uc *userConfig) GetInterval() map[string]*schedule.TimeInterval {
 	return ret
 }
 
-func (uc *userConfig) GetStoreByLabel(cluster schedule.Cluster, storeLabel []schedule.Label) *core.StoreInfo {
-	length := len(storeLabel)
-	for _, store := range cluster.GetStores() {
-		sum := 0
-		storeLabels := store.GetMeta().Labels
-		for _, label := range storeLabels {
-			for _, myLabel := range storeLabel {
-				if myLabel.Key == label.Key && myLabel.Value == label.Value {
-					sum++
-					log.Info("GetStoreId match", zap.String(myLabel.Key, myLabel.Value))
-					continue
+func (uc *userConfig) IfConflict() bool {
+	ret := false
+	// move_leaders
+	for i, l1 := range uc.cfg.Leaders.Leader {
+		for j, l2 := range uc.cfg.Leaders.Leader {
+			if i < j {
+				if (l1.KeyStart < l2.KeyStart && l1.KeyEnd > l2.KeyStart) ||
+					(l2.KeyStart < l1.KeyStart && l2.KeyEnd > l1.KeyStart) {
+					log.Error("Key Range Conflict", zap.Ints("Config Move-Leader Nums", []int{i, j}))
+					ret = true
 				}
 			}
 		}
-		if sum == length {
-			return store
+	}
+	// move_regions
+	for i, r1 := range uc.cfg.Regions.Region {
+		for j, r2 := range uc.cfg.Regions.Region {
+			if i < j {
+				if (r1.KeyStart < r2.KeyStart && r1.KeyEnd > r2.KeyStart) ||
+					(r2.KeyStart < r1.KeyStart && r2.KeyEnd > r1.KeyStart) {
+					log.Error("Key Range Conflict", zap.Ints("Config Move-Region Nums", []int{i, j}))
+					ret = true
+				}
+			}
 		}
 	}
-	return nil
+	return ret
+}
+
+func (uc *userConfig) IfNeedCheckStore() [][]int {
+	ret := [][]int{}
+	for i, l := range uc.cfg.Leaders.Leader {
+		for j, r := range uc.cfg.Regions.Region {
+			if (l.KeyStart < r.KeyStart && l.KeyEnd > r.KeyStart) ||
+				(r.KeyStart < l.KeyStart && r.KeyEnd > l.KeyStart) {
+				ret = append(ret, []int{i, j})
+			}
+		}
+	}
+	return ret
 }

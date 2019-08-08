@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"time"
 
 	"github.com/pingcap/log"
@@ -21,11 +22,11 @@ type moveRegionUserScheduler struct {
 
 func init() {
 	schedule.RegisterScheduler("move-region-user", func(opController *schedule.OperatorController, args []string) (schedule.Scheduler, error) {
-		return newMoveRegionUserScheduler(opController, "", []uint64{}, []uint64{}, nil), nil
+		return newMoveRegionUserScheduler(opController, "", nil), nil
 	})
 }
 
-func newMoveRegionUserScheduler(opController *schedule.OperatorController, name string, regionIDs []uint64, storeIDs []uint64, interval *schedule.TimeInterval) schedule.Scheduler {
+func newMoveRegionUserScheduler(opController *schedule.OperatorController, name string, interval *schedule.TimeInterval) schedule.Scheduler {
 	filters := []schedule.Filter{
 		schedule.StoreStateFilter{MoveRegion: true},
 	}
@@ -33,8 +34,8 @@ func newMoveRegionUserScheduler(opController *schedule.OperatorController, name 
 	return &moveRegionUserScheduler{
 		userBaseScheduler: base,
 		name:              name,
-		regionIDs:         regionIDs,
-		storeIDs:          storeIDs,
+		regionIDs:         []uint64{},
+		storeIDs:          []uint64{},
 		timeInterval:      interval,
 		filters:           filters,
 		opController:      opController,
@@ -54,16 +55,21 @@ func (r *moveRegionUserScheduler) IsScheduleAllowed(cluster schedule.Cluster) bo
 }
 
 func (r *moveRegionUserScheduler) Schedule(cluster schedule.Cluster) []*schedule.Operator {
+	schedule.PluginsMapLock.RLock()
+	defer schedule.PluginsMapLock.RUnlock()
+
 	if r.timeInterval != nil {
 		currentTime := time.Now()
 		if currentTime.After(r.timeInterval.End) || r.timeInterval.Begin.After(currentTime) {
 			return nil
 		}
 	}
-	var ops []*schedule.Operator
+	ss := strings.Split(r.name, "-")
+	r.regionIDs = schedule.PluginsMap["Region-"+ss[4]].GetRegionIDs()
+	r.storeIDs = schedule.PluginsMap["Region-"+ss[4]].GetStoreIDs()
 
 	if len(r.storeIDs) == 0 {
-		return ops
+		return nil
 	}
 
 	for _, regionID := range r.regionIDs {
@@ -83,7 +89,7 @@ func (r *moveRegionUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 					if _, ok := storeIDs[storeID]; !ok {
 						storeIDs[storeID] = struct{}{}
 					}
-				}else {
+				} else {
 					break
 				}
 			}
@@ -91,11 +97,10 @@ func (r *moveRegionUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 			if err != nil {
 				continue
 			}
-			ops = append(ops, op)
-			return ops
+			return []*schedule.Operator{op}
 		}
 	}
-	return ops
+	return nil
 }
 
 func (r *moveRegionUserScheduler) allExist(storeIDs []uint64, region *core.RegionInfo) bool {
