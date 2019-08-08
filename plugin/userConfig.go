@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/hex"
+	"github.com/pingcap/pd/server/core"
 	"github.com/pingcap/pd/server/schedule"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -19,8 +21,16 @@ type userConfig struct {
 }
 
 type dispatchConfig struct {
-	Leader moveLeader
-	Region moveRegion
+	Leaders leaders
+	Regions regions
+}
+
+type leaders struct {
+	Leader []moveLeader
+}
+
+type regions struct {
+	Region []moveRegion
 }
 
 type moveLeader struct {
@@ -30,7 +40,6 @@ type moveLeader struct {
 	Stores    []stores
 	StartTime time.Time
 	EndTime   time.Time
-	HighPerf  bool
 }
 
 type moveRegion struct {
@@ -73,170 +82,175 @@ func (uc *userConfig) LoadConfig() {
 	uc.cfg = cfg
 	uc.version++
 
-	pi := &schedule.PluginInfo{
-		KeyStart:  uc.cfg.Leader.KeyStart,
-		KeyEnd:    uc.cfg.Leader.KeyEnd,
-		Interval:  schedule.TimeInterval{Begin: uc.cfg.Leader.StartTime, End: uc.cfg.Leader.EndTime},
-		RegionIDs: []uint64{},
-		StoreIDs:  []uint64{},
+	for i, info := range uc.cfg.Leaders.Leader {
+		pi := &schedule.PluginInfo{
+			Persist:   info.Persist,
+			KeyStart:  info.KeyStart,
+			KeyEnd:    info.KeyEnd,
+			Interval:  &schedule.TimeInterval{Begin: info.StartTime, End: info.EndTime},
+			RegionIDs: []uint64{},
+			StoreIDs:  []uint64{},
+		}
+		str := "Leader-" + strconv.Itoa(i)
+		schedule.PluginsMap[str] = pi
 	}
-	schedule.PluginsMap["Leader"] = pi
-	pi2 := &schedule.PluginInfo{
-		KeyStart:  uc.cfg.Region.KeyStart,
-		KeyEnd:    uc.cfg.Region.KeyEnd,
-		Interval:  schedule.TimeInterval{Begin: uc.cfg.Region.StartTime, End: uc.cfg.Region.EndTime},
-		RegionIDs: []uint64{},
-		StoreIDs:  []uint64{},
-	}
-	schedule.PluginsMap["Region"] = pi2
-}
 
-func (uc *userConfig) GetInterval() map[string]*schedule.TimeInterval{
-	ret := make(map[string]*schedule.TimeInterval)
-	ret["Leader"] =  &schedule.TimeInterval{
-		Begin: uc.cfg.Leader.StartTime,
-		End:   uc.cfg.Leader.EndTime,
+	for i, info := range uc.cfg.Regions.Region {
+		pi := &schedule.PluginInfo{
+			Persist:   info.Persist,
+			KeyStart:  info.KeyStart,
+			KeyEnd:    info.KeyEnd,
+			Interval:  &schedule.TimeInterval{Begin: info.StartTime, End: info.EndTime},
+			RegionIDs: []uint64{},
+			StoreIDs:  []uint64{},
+		}
+		str := "Region-" + strconv.Itoa(i)
+		schedule.PluginsMap[str] = pi
 	}
-	ret["Region"] = &schedule.TimeInterval{
-		Begin: uc.cfg.Region.StartTime,
-		End:   uc.cfg.Region.EndTime,
-	}
-	return ret
+
 }
 
 func (uc *userConfig) GetStoreId(cluster schedule.Cluster) map[string][]uint64 {
+	schedule.PluginsMapLock.Lock()
+	defer schedule.PluginsMapLock.Unlock()
+
 	ret := make(map[string][]uint64)
-	ret["Leader"] = uc.GetStoreIdLeader(cluster)
-	ret["Region"] = uc.GetStoreIdRegion(cluster)
+	for i, Leader := range uc.cfg.Leaders.Leader {
+		for _, s := range Leader.Stores {
+			if store := uc.GetStoreByLabel(cluster, s.StoreLabel); store != nil {
+				str := "Leader-" + strconv.Itoa(i)
+				schedule.PluginsMap[str].StoreIDs = append(schedule.PluginsMap[str].StoreIDs, store.GetID())
+				log.Info("GetStoreId-MoveLeader", zap.Uint64("store-id", store.GetID()))
+				ret[str] = append(ret[str], store.GetID())
+			}
+		}
+	}
+	for i, Region := range uc.cfg.Regions.Region {
+		for _, s := range Region.Stores {
+			if store := uc.GetStoreByLabel(cluster, s.StoreLabel); store != nil {
+				str := "Region-" + strconv.Itoa(i)
+				schedule.PluginsMap[str].StoreIDs = append(schedule.PluginsMap[str].StoreIDs, store.GetID())
+				log.Info("GetStoreId-MoveRegion", zap.Uint64("store-id", store.GetID()))
+				ret[str] = append(ret[str], store.GetID())
+			}
+		}
+	}
 	return ret
 }
 
 func (uc *userConfig) GetRegionId(cluster schedule.Cluster) map[string][]uint64 {
+	schedule.PluginsMapLock.Lock()
+	defer schedule.PluginsMapLock.Unlock()
+
 	ret := make(map[string][]uint64)
-	ret["Leader"] = uc.GetRegionIdLeader(cluster)
-	ret["Region"] = uc.GetRegionIdRegion(cluster)
+
+	for i, Leader := range uc.cfg.Leaders.Leader {
+		str := "Leader-" + strconv.Itoa(i)
+		//decode key form string to []byte
+		startKey, err := hex.DecodeString(Leader.KeyStart)
+		if err != nil {
+			log.Info("can not decode", zap.String("key:", Leader.KeyStart))
+			continue
+		}
+		endKey, err := hex.DecodeString(Leader.KeyEnd)
+		if err != nil {
+			log.Info("can not decode", zap.String("key:", Leader.KeyEnd))
+			continue
+		}
+		
+		var lastKey []byte
+		regions := cluster.ScanRangeWithEndKey(startKey, endKey)
+		for _, region := range regions {
+			log.Info("GetRegionId-MoveLeader", zap.Uint64("region-id", region.GetID()))
+			ret[str] = append(ret[str], region.GetID())
+			schedule.PluginsMap[str].RegionIDs = append(schedule.PluginsMap[str].RegionIDs, region.GetID())
+			log.Info("Region(Leader)",zap.String("end key",hex.EncodeToString(region.GetEndKey())))
+			lastKey = region.GetEndKey()
+		}
+		lastRegion := cluster.ScanRegions(lastKey, 1)
+		if len(lastRegion) != 0{
+			log.Info("Region(Region)",zap.Uint64("last region",lastRegion[0].GetID()))
+			ret[str] = append(ret[str], lastRegion[0].GetID())
+			schedule.PluginsMap[str].RegionIDs = append(schedule.PluginsMap[str].RegionIDs, lastRegion[0].GetID())
+		}
+		log.Info("PluginsMap",zap.String("key",str))
+		log.Info("PluginsMap",zap.Uint64s("regions",schedule.PluginsMap[str].RegionIDs))
+	}
+
+	for i, Region := range uc.cfg.Regions.Region {
+		str := "Region-" + strconv.Itoa(i)
+		//decode key form string to []byte
+		startKey, err := hex.DecodeString(Region.KeyStart)
+		if err != nil {
+			log.Info("can not decode", zap.String("key:", Region.KeyStart))
+			continue
+		}
+		endKey, err := hex.DecodeString(Region.KeyEnd)
+		if err != nil {
+			log.Info("can not decode", zap.String("key:", Region.KeyEnd))
+			continue
+		}
+
+		var lastKey []byte
+		regions := cluster.ScanRangeWithEndKey(startKey, endKey)
+		for _, region := range regions {
+			log.Info("GetRegionId-MoveRegion", zap.Uint64("region-id", region.GetID()))
+			ret[str] = append(ret[str], region.GetID())
+			schedule.PluginsMap[str].RegionIDs = append(schedule.PluginsMap[str].RegionIDs, region.GetID())
+			log.Info("Region(Region)",zap.String("end key",hex.EncodeToString(region.GetEndKey())))
+			lastKey = region.GetEndKey()
+		}
+		lastRegion := cluster.ScanRegions(lastKey, 1)
+		if len(lastRegion) != 0{
+			log.Info("Region(Region)",zap.Uint64("last region",lastRegion[0].GetID()))
+			ret[str] = append(ret[str], lastRegion[0].GetID())
+			schedule.PluginsMap[str].RegionIDs = append(schedule.PluginsMap[str].RegionIDs, lastRegion[0].GetID())
+		}
+		log.Info("PluginsMap",zap.String("key",str))
+		log.Info("PluginsMap",zap.Uint64s("regions",schedule.PluginsMap[str].RegionIDs))
+	}
+
 	return ret
 }
 
-func (uc *userConfig) GetStoreIdLeader(cluster schedule.Cluster) []uint64 {
-	var ret []uint64
-	for _, s := range uc.cfg.Leader.Stores {
-		lLen := len(s.StoreLabel)
-		for _, store := range cluster.GetStores() {
-			sum := 0
-			storeLabels := store.GetMeta().Labels
-			for _, label := range storeLabels {
-				for _, myLabel := range s.StoreLabel {
-					if myLabel.Key == label.Key && myLabel.Value == label.Value {
-						sum++
-						log.Info("GetStoreIdLeader match", zap.String(myLabel.Key, myLabel.Value))
-						continue
-					}
+func (uc *userConfig) GetInterval() map[string]*schedule.TimeInterval {
+	ret := make(map[string]*schedule.TimeInterval)
+	for i, Leader := range uc.cfg.Leaders.Leader {
+		str := "Leader-" + strconv.Itoa(i)
+		interval := &schedule.TimeInterval{
+			Begin: Leader.StartTime,
+			End:   Leader.EndTime,
+		}
+		ret[str] = interval
+	}
+	for i, Region := range uc.cfg.Regions.Region {
+		str := "Region-" + strconv.Itoa(i)
+		interval := &schedule.TimeInterval{
+			Begin: Region.StartTime,
+			End:   Region.EndTime,
+		}
+		ret[str] = interval
+	}
+	return ret
+}
+
+func (uc *userConfig) GetStoreByLabel(cluster schedule.Cluster, storeLabel []schedule.Label) *core.StoreInfo {
+	length := len(storeLabel)
+	for _, store := range cluster.GetStores() {
+		sum := 0
+		storeLabels := store.GetMeta().Labels
+		for _, label := range storeLabels {
+			for _, myLabel := range storeLabel {
+				if myLabel.Key == label.Key && myLabel.Value == label.Value {
+					sum++
+					log.Info("GetStoreId match", zap.String(myLabel.Key, myLabel.Value))
+					continue
 				}
 			}
-			if sum == lLen {
-				pi := schedule.PluginsMap["Leader"]
-				pi.StoreIDs = append(pi.StoreIDs, store.GetID())
-				schedule.PluginsMap["Leader"] = pi
-				log.Info("GetStoreIdLeader", zap.Uint64("store-id", store.GetID()))
-				ret = append(ret, store.GetID())
-			}
+		}
+		if sum == length {
+			return store
 		}
 	}
-	return ret
-}
-
-func (uc *userConfig) GetRegionIdLeader(cluster schedule.Cluster) []uint64 {
-	schedule.PluginsMapLock.Lock()
-	defer schedule.PluginsMapLock.Unlock()
-
-	var ret []uint64
-
-	startKey, err := hex.DecodeString(uc.cfg.Leader.KeyStart)
-	if err != nil {
-		log.Info("Bad format region start key", zap.String("key", uc.cfg.Leader.KeyStart))
-		return ret
-	}
-
-	endKey, err := hex.DecodeString(uc.cfg.Leader.KeyEnd)
-	if err != nil {
-		log.Info("Bad format region end key", zap.String("key", uc.cfg.Leader.KeyEnd))
-		return ret
-	}
-
-	regions := cluster.ScanRangeWithEndKey(startKey, endKey)
-	for _, region := range regions {
-		log.Info("GetRegionIdLeader", zap.Uint64("region-id", region.GetID()))
-		ret = append(ret, region.GetID())
-	}
-
-	pi := schedule.PluginsMap["Leader"]
-	pi.RegionIDs = append(pi.RegionIDs, ret...)
-	schedule.PluginsMap["Leader"] = pi
-
-	return ret
-}
-
-func (uc *userConfig) GetStoreIdRegion(cluster schedule.Cluster) []uint64 {
-	var ret []uint64
-	for _, s := range uc.cfg.Region.Stores {
-		lLen := len(s.StoreLabel)
-		for _, store := range cluster.GetStores() {
-			sum := 0
-			storeLabels := store.GetMeta().Labels
-			for _, label := range storeLabels {
-				for _, myLabel := range s.StoreLabel {
-					if myLabel.Key == label.Key && myLabel.Value == label.Value {
-						sum++
-						log.Info("GetStoreIdRegion match", zap.String(myLabel.Key, myLabel.Value))
-						continue
-					}
-				}
-			}
-			if sum == lLen {
-				pi := schedule.PluginsMap["Region"]
-				pi.StoreIDs = append(pi.StoreIDs, store.GetID())
-				schedule.PluginsMap["Region"] = pi
-				log.Info("GetStoreIdRegion", zap.Uint64("store-id", store.GetID()))
-				ret = append(ret, store.GetID())
-			}
-		}
-	}
-	return ret
-}
-
-func (uc *userConfig) GetRegionIdRegion(cluster schedule.Cluster) []uint64 {
-	schedule.PluginsMapLock.Lock()
-	defer schedule.PluginsMapLock.Unlock()
-
-	var ret []uint64
-
-	log.Info("start key", zap.String("key", uc.cfg.Region.KeyStart))
-	startKey, err := hex.DecodeString(uc.cfg.Region.KeyStart)
-	if err != nil {
-		log.Info("Bad format region start key", zap.String("key", uc.cfg.Region.KeyStart))
-		return ret
-	}
-	log.Info("decode start key", zap.ByteString("key", startKey))
-
-	log.Info("end key", zap.String("key", uc.cfg.Region.KeyEnd))
-	endKey, err := hex.DecodeString(uc.cfg.Region.KeyEnd)
-	if err != nil {
-		log.Info("Bad format region end key", zap.String("key", uc.cfg.Region.KeyEnd))
-		return ret
-	}
-	log.Info("decode end key", zap.ByteString("key", endKey))
-
-	regions := cluster.ScanRangeWithEndKey(startKey, endKey)
-	for _, region := range regions {
-		log.Info("GetRegionIdRegion", zap.Uint64("region-id", region.GetID()))
-		ret = append(ret, region.GetID())
-	}
-
-	log.Info("GetRegionIdRegion end")
-	pi := schedule.PluginsMap["Region"]
-	pi.RegionIDs = append(pi.RegionIDs, ret...)
-	schedule.PluginsMap["Region"] = pi
-
-	return ret
+	return nil
 }

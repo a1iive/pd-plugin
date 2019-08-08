@@ -500,8 +500,6 @@ func (c *coordinator) runScheduler(s *scheduleController) {
 				continue
 			}
 			if op := s.Schedule(); op != nil {
-				log.Info("call schedule have op", zap.String("schedule name", s.GetName()))
-				log.Info("run scheduler", zap.Int("num of op", len(op)))
 				c.opController.AddWaitingOperator(op...)
 			}
 

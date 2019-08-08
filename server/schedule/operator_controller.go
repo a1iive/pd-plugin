@@ -186,8 +186,6 @@ func (oc *OperatorController) AddWaitingOperator(ops ...*Operator) bool {
 
 	op := ops[0]
 	desc := op.Desc()
-	log.Info("compare", zap.Uint64("ops[desc]", oc.wopStatus.ops[desc]))
-	log.Info("compare", zap.Uint64("MAX WAITING", oc.cluster.GetSchedulerMaxWaitingOperator()))
 	if oc.wopStatus.ops[desc] >= oc.cluster.GetSchedulerMaxWaitingOperator() {
 		operatorWaitCounter.WithLabelValues(op.Desc(), "exceed_max").Inc()
 		oc.Unlock()
@@ -246,11 +244,9 @@ func (oc *OperatorController) PromoteWaitingOperator() {
 				oc.opRecords.Put(op, pdpb.OperatorStatus_CANCEL)
 			}
 			oc.wopStatus.ops[ops[0].Desc()]--
-			log.Info("wops nums",zap.Uint64("1:",oc.wopStatus.ops[ops[0].Desc()]))
 			continue
 		}
 		oc.wopStatus.ops[ops[0].Desc()]--
-		log.Info("wops nums",zap.Uint64("2:",oc.wopStatus.ops[ops[0].Desc()]))
 		break
 	}
 	for _, op := range ops {

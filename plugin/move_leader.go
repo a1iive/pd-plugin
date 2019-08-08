@@ -9,41 +9,45 @@ import (
 	"go.uber.org/zap"
 )
 
-var storeSeq = 0
-
 type moveLeaderUserScheduler struct {
 	*userBaseScheduler
+	name         string
 	opController *schedule.OperatorController
 	regionIDs    []uint64
 	storeIDs     []uint64
+	storeSeq     int
 	timeInterval *schedule.TimeInterval
+	regionFilter []schedule.RegionFilter
 	filters      []schedule.Filter
 }
 
 func init() {
 	schedule.RegisterScheduler("move-leader-user", func(opController *schedule.OperatorController, args []string) (schedule.Scheduler, error) {
-		return newMoveLeaderUserScheduler(opController, []uint64{}, []uint64{}, nil), nil
+		return newMoveLeaderUserScheduler(opController, "", []uint64{}, []uint64{}, nil), nil
 	})
 }
 
-func newMoveLeaderUserScheduler(opController *schedule.OperatorController, regionIDs []uint64, storeIDs []uint64, interval *schedule.TimeInterval) schedule.Scheduler {
+func newMoveLeaderUserScheduler(opController *schedule.OperatorController, name string, regionIDs []uint64, storeIDs []uint64, interval *schedule.TimeInterval) schedule.Scheduler {
 	filters := []schedule.Filter{
 		schedule.StoreStateFilter{TransferLeader: true},
 	}
+	regionFilters := []schedule.RegionFilter{NewLeaderFilter(),}
 	base := newUserBaseScheduler(opController)
-
 	return &moveLeaderUserScheduler{
 		userBaseScheduler: base,
-		opController:	   opController,
+		name:              name,
 		regionIDs:         regionIDs,
 		storeIDs:          storeIDs,
+		storeSeq:          0,
 		timeInterval:      interval,
 		filters:           filters,
+		regionFilter:      regionFilters,
+		opController:      opController,
 	}
 }
 
 func (l *moveLeaderUserScheduler) GetName() string {
-	return "move-leader-user-scheduler"
+	return l.name
 }
 
 func (l *moveLeaderUserScheduler) GetType() string {
@@ -58,11 +62,10 @@ func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 	if l.timeInterval != nil {
 		currentTime := time.Now()
 		if currentTime.After(l.timeInterval.End) || l.timeInterval.Begin.After(currentTime) {
-			log.Info("time not suitable")
 			return nil
 		}
 	}
-
+	
 	var ops []*schedule.Operator
 	if len(l.storeIDs) == 0 {
 		return ops
@@ -76,20 +79,18 @@ func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 		sourceID := region.GetLeader().GetStoreId()
 		source := cluster.GetStore(sourceID)
 		if schedule.FilterSource(cluster, source, l.filters) {
-			log.Info("source store has been filtered", zap.Uint64("store-id", sourceID))
 			continue
 		}
 		//如果leader不在选定stores上
 		if !l.isExist(sourceID, l.storeIDs) {
-			targetID := l.storeIDs[storeSeq]
-			if storeSeq < len(l.storeIDs)-1 {
-                                storeSeq++
-                        } else {
-                                storeSeq = 0
-                        }
+			targetID := l.storeIDs[l.storeSeq]
+			if l.storeSeq < len(l.storeIDs)-1 {
+				l.storeSeq++
+			} else {
+				l.storeSeq = 0
+			}
 			target := cluster.GetStore(targetID)
 			if schedule.FilterTarget(cluster, target, l.filters) {
-				log.Info("target store has been filtered", zap.Uint64("store-id", targetID))
 				continue
 			}
 			if _, ok := region.GetStoreIds()[targetID]; ok {
@@ -114,7 +115,6 @@ func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 				return ops
 			}
 		}
-
 	}
 	return ops
 }
@@ -127,5 +127,3 @@ func (l *moveLeaderUserScheduler) isExist(storeID uint64, storeIDs []uint64) boo
 	}
 	return false
 }
-
-var userScheduler1 moveLeaderUserScheduler
