@@ -157,13 +157,24 @@ func (uc *userConfig) GetRegionId(cluster schedule.Cluster) map[string][]uint64 
 			log.Info("can not decode", zap.String("key:", Leader.KeyEnd))
 			continue
 		}
-
+		
+		var lastKey []byte
 		regions := cluster.ScanRangeWithEndKey(startKey, endKey)
 		for _, region := range regions {
 			log.Info("GetRegionId-MoveLeader", zap.Uint64("region-id", region.GetID()))
 			ret[str] = append(ret[str], region.GetID())
 			schedule.PluginsMap[str].RegionIDs = append(schedule.PluginsMap[str].RegionIDs, region.GetID())
+			log.Info("Region(Leader)",zap.String("end key",hex.EncodeToString(region.GetEndKey())))
+			lastKey = region.GetEndKey()
 		}
+		lastRegion := cluster.ScanRegions(lastKey, 1)
+		if len(lastRegion) != 0{
+			log.Info("Region(Region)",zap.Uint64("last region",lastRegion[0].GetID()))
+			ret[str] = append(ret[str], lastRegion[0].GetID())
+			schedule.PluginsMap[str].RegionIDs = append(schedule.PluginsMap[str].RegionIDs, lastRegion[0].GetID())
+		}
+		log.Info("PluginsMap",zap.String("key",str))
+		log.Info("PluginsMap",zap.Uint64s("regions",schedule.PluginsMap[str].RegionIDs))
 	}
 
 	for i, Region := range uc.cfg.Regions.Region {
@@ -180,12 +191,23 @@ func (uc *userConfig) GetRegionId(cluster schedule.Cluster) map[string][]uint64 
 			continue
 		}
 
+		var lastKey []byte
 		regions := cluster.ScanRangeWithEndKey(startKey, endKey)
 		for _, region := range regions {
 			log.Info("GetRegionId-MoveRegion", zap.Uint64("region-id", region.GetID()))
 			ret[str] = append(ret[str], region.GetID())
 			schedule.PluginsMap[str].RegionIDs = append(schedule.PluginsMap[str].RegionIDs, region.GetID())
+			log.Info("Region(Region)",zap.String("end key",hex.EncodeToString(region.GetEndKey())))
+			lastKey = region.GetEndKey()
 		}
+		lastRegion := cluster.ScanRegions(lastKey, 1)
+		if len(lastRegion) != 0{
+			log.Info("Region(Region)",zap.Uint64("last region",lastRegion[0].GetID()))
+			ret[str] = append(ret[str], lastRegion[0].GetID())
+			schedule.PluginsMap[str].RegionIDs = append(schedule.PluginsMap[str].RegionIDs, lastRegion[0].GetID())
+		}
+		log.Info("PluginsMap",zap.String("key",str))
+		log.Info("PluginsMap",zap.Uint64s("regions",schedule.PluginsMap[str].RegionIDs))
 	}
 
 	return ret
@@ -221,7 +243,7 @@ func (uc *userConfig) GetStoreByLabel(cluster schedule.Cluster, storeLabel []sch
 			for _, myLabel := range storeLabel {
 				if myLabel.Key == label.Key && myLabel.Value == label.Value {
 					sum++
-					log.Info("GetStoreIdLeader match", zap.String(myLabel.Key, myLabel.Value))
+					log.Info("GetStoreId match", zap.String(myLabel.Key, myLabel.Value))
 					continue
 				}
 			}

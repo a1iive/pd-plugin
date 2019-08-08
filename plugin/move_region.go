@@ -1,9 +1,12 @@
 package main
 
 import (
+	"time"
+
+	"github.com/pingcap/log"
 	"github.com/pingcap/pd/server/core"
 	"github.com/pingcap/pd/server/schedule"
-	"time"
+	"go.uber.org/zap"
 )
 
 type moveRegionUserScheduler struct {
@@ -39,7 +42,7 @@ func newMoveRegionUserScheduler(opController *schedule.OperatorController, name 
 }
 
 func (r *moveRegionUserScheduler) GetName() string {
-	return "move-region-user-scheduler"
+	return r.name
 }
 
 func (r *moveRegionUserScheduler) GetType() string {
@@ -58,26 +61,29 @@ func (r *moveRegionUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 		}
 	}
 	var ops []*schedule.Operator
-	var storeIDs = make(map[uint64]struct{})
 
 	if len(r.storeIDs) == 0 {
 		return ops
 	}
 
-	for _, storeID := range r.storeIDs {
-		storeIDs[storeID] = struct{}{}
-	}
-
 	for _, regionID := range r.regionIDs {
+		storeIDs := make(map[uint64]struct{})
+		for _, storeID := range r.storeIDs {
+			storeIDs[storeID] = struct{}{}
+		}
 		region := cluster.GetRegion(regionID)
-		if !r.allExist(r.storeIDs, region){
-			replicas := len(region.GetStoreIds())
+		if region == nil {
+			log.Info("region not exist", zap.Uint64("region-id", regionID))
+			continue
+		}
+		if !r.allExist(r.storeIDs, region) {
+			replicas := cluster.GetMaxReplicas()
 			for storeID := range region.GetStoreIds() {
-				if replicas > len(r.storeIDs) {
+				if replicas > len(storeIDs) {
 					if _, ok := storeIDs[storeID]; !ok {
 						storeIDs[storeID] = struct{}{}
 					}
-				} else {
+				}else {
 					break
 				}
 			}
@@ -92,11 +98,11 @@ func (r *moveRegionUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 	return ops
 }
 
-func (r *moveRegionUserScheduler) allExist(storeIDs []uint64,region *core.RegionInfo) bool{
-	for _, storeID := range storeIDs{
-		if _, ok := region.GetStoreIds()[storeID]; ok{
+func (r *moveRegionUserScheduler) allExist(storeIDs []uint64, region *core.RegionInfo) bool {
+	for _, storeID := range storeIDs {
+		if _, ok := region.GetStoreIds()[storeID]; ok {
 			continue
-		}else {
+		} else {
 			return false
 		}
 	}

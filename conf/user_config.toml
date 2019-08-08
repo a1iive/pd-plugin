@@ -1,8 +1,8 @@
 [Leaders]
 [[Leaders.Leader]] # moveleader
     Persist   = true
-    KeyStart  = "757365727461626C653A7573657234323434383839313533373931343037373037"
-    KeyEnd    = "757365727461626C653A7573657235643637353232383738383832303830353737"   
+    KeyStart  = "757365727461626C653A7573657231773937383833313437333137333731323135"
+    KeyEnd    = "757365727461626C653A7573657234543637353232383738383832303830353737"   
     StartTime = "2019-08-05T07:30:00-08:00"
     EndTime   = "2019-08-16T10:30:00-08:00"
     [[Leaders.Leader.Stores]]
@@ -27,36 +27,26 @@
             Value = "h5"
 [[Leaders.Leader]] # moveleader
     Persist   = true
-    KeyStart  = "757365727461626C653A7573657235643637353232383738383832303830353737"
-    KeyEnd    = "757365727461626C653A7573657236943637353232383738383832303830353737"   
+    KeyStart  = "757365727461626C653A7573657234543637353232383738383832303830353737"
+    KeyEnd    = "757365727461626C653A7573657236343637353232383738383832303830353737"   
     StartTime = "2019-08-05T07:30:00-08:00"
     EndTime   = "2019-08-16T10:30:00-08:00"
     [[Leaders.Leader.Stores]]
         [[Leaders.Leader.Stores.StoreLabel]]
             Key   = "zone"
-            Value = "z4"
+            Value = "z2"
         [[Leaders.Leader.Stores.StoreLabel]]
             Key   = "rack"
-            Value = "r4"
+            Value = "r2"
         [[Leaders.Leader.Stores.StoreLabel]]
             Key   = "host"
-            Value = "h4"
-    [[Leaders.Leader.Stores]]
-        [[Leaders.Leader.Stores.StoreLabel]]
-            Key   = "zone"
-            Value = "z5"
-        [[Leaders.Leader.Stores.StoreLabel]]
-            Key   = "rack"
-            Value = "r5"
-        [[Leaders.Leader.Stores.StoreLabel]]
-            Key   = "host"
-            Value = "h5"
+            Value = "h2"
 
 [Regions]
 [[Regions.Region]] # moveregion
     Persist   = true
-    KeyStart  = "757365727461626C653A7573657236943637353232383738383832303830353737"
-    KeyEnd    = "757365727461626C653A7573657238773036373639353831393732343031333937"
+    KeyStart  = "757365727461626C653A7573657236343637353232383738383832303830353737"
+    KeyEnd    = "757365727461626C653A7573657238173036373639353831393732343031333937"
     StartTime = "2019-08-05T07:30:00-08:00"
     EndTime   = "2019-08-16T10:30:00-08:00"
     [[Regions.Region.Stores]]
@@ -89,3 +79,29 @@
         [[Regions.Region.Stores.StoreLabel]]
             Key   = "host"
             Value = "h3"
+[[Regions.Region]] # moveregion
+    Persist   = true
+    KeyStart  = "757365727461626C653A7573657238173036373639353831393732343031333937"
+    KeyEnd    = "757365727461626C653A7573657239973036373639353831393732343031333937"
+    StartTime = "2019-08-05T07:30:00-08:00"
+    EndTime   = "2019-08-16T10:30:00-08:00"
+    [[Regions.Region.Stores]]
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "zone"
+            Value = "z4"
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "rack"
+            Value = "r4"
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "host"
+            Value = "h4"
+    [[Regions.Region.Stores]]
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "zone"
+            Value = "z5"
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "rack"
+            Value = "r5"
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "host"
+            Value = "h5"

@@ -9,14 +9,13 @@ import (
 	"go.uber.org/zap"
 )
 
-var storeSeq = 0
-
 type moveLeaderUserScheduler struct {
 	*userBaseScheduler
 	name         string
 	opController *schedule.OperatorController
 	regionIDs    []uint64
 	storeIDs     []uint64
+	storeSeq     int
 	timeInterval *schedule.TimeInterval
 	regionFilter []schedule.RegionFilter
 	filters      []schedule.Filter
@@ -39,6 +38,7 @@ func newMoveLeaderUserScheduler(opController *schedule.OperatorController, name 
 		name:              name,
 		regionIDs:         regionIDs,
 		storeIDs:          storeIDs,
+		storeSeq:          0,
 		timeInterval:      interval,
 		filters:           filters,
 		regionFilter:      regionFilters,
@@ -79,20 +79,18 @@ func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 		sourceID := region.GetLeader().GetStoreId()
 		source := cluster.GetStore(sourceID)
 		if schedule.FilterSource(cluster, source, l.filters) {
-			log.Info("source store has been filtered", zap.Uint64("store-id", sourceID))
 			continue
 		}
 		//如果leader不在选定stores上
 		if !l.isExist(sourceID, l.storeIDs) {
-			targetID := l.storeIDs[storeSeq]
-			if storeSeq < len(l.storeIDs)-1 {
-				storeSeq++
+			targetID := l.storeIDs[l.storeSeq]
+			if l.storeSeq < len(l.storeIDs)-1 {
+				l.storeSeq++
 			} else {
-				storeSeq = 0
+				l.storeSeq = 0
 			}
 			target := cluster.GetStore(targetID)
 			if schedule.FilterTarget(cluster, target, l.filters) {
-				log.Info("target store has been filtered", zap.Uint64("store-id", targetID))
 				continue
 			}
 			if _, ok := region.GetStoreIds()[targetID]; ok {
