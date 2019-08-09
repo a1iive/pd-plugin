@@ -48,10 +48,10 @@ const (
 
 type balanceRegionScheduler struct {
 	*baseScheduler
-	selector     *schedule.BalanceSelector
+	selector      *schedule.BalanceSelector
 	regionFilters []schedule.RegionFilter
-	opController *schedule.OperatorController
-	hitsCounter  *hitsStoreBuilder
+	opController  *schedule.OperatorController
+	hitsCounter   *hitsStoreBuilder
 }
 
 // newBalanceRegionScheduler creates a scheduler that tends to keep regions on
@@ -63,13 +63,13 @@ func newBalanceRegionScheduler(opController *schedule.OperatorController) schedu
 	base := newBaseScheduler(opController)
 	regionFilters := []schedule.RegionFilter{}
 	//get func from plugin
-	//func : NewLeaderFilter()
-	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewLeaderFilter")
+	//func : NewViolentFilter()
+	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewViolentFilter")
 	if err != nil {
 		log.Error("Plugin GetFunction err", zap.Error(err))
 	} else {
-		NewLeaderFilter := f.(func() schedule.RegionFilter)
-		regionFilters = append(regionFilters, NewLeaderFilter())
+		NewViolentFilter := f.(func() schedule.RegionFilter)
+		regionFilters = append(regionFilters, NewViolentFilter())
 	}
 	s := &balanceRegionScheduler{
 		baseScheduler: base,
@@ -96,7 +96,7 @@ func (s *balanceRegionScheduler) IsScheduleAllowed(cluster schedule.Cluster) boo
 func (s *balanceRegionScheduler) Schedule(cluster schedule.Cluster) []*schedule.Operator {
 	schedule.PluginsMapLock.RLock()
 	defer schedule.PluginsMapLock.RUnlock()
-	
+
 	schedulerCounter.WithLabelValues(s.GetName(), "schedule").Inc()
 	stores := cluster.GetStores()
 
@@ -136,8 +136,7 @@ func (s *balanceRegionScheduler) Schedule(cluster schedule.Cluster) []*schedule.
 			continue
 		}
 		log.Debug("select region", zap.String("scheduler", s.GetName()), zap.Uint64("region-id", region.GetID()))
-		
-		
+
 		// We don't schedule region with abnormal number of replicas.
 		if len(region.GetPeers()) != cluster.GetMaxReplicas() {
 			log.Debug("region has abnormal replica count", zap.String("scheduler", s.GetName()), zap.Uint64("region-id", region.GetID()))
@@ -153,12 +152,13 @@ func (s *balanceRegionScheduler) Schedule(cluster schedule.Cluster) []*schedule.
 			s.hitsCounter.put(source, nil)
 			continue
 		}
-		
+
 		//排除与用户调度冲突的regions
 		allow := true
 		if len(s.regionFilters) != 0 {
-			for _, pluginInfo := range schedule.PluginsMap{
-				if  schedule.RegionFilterSource(cluster, region, s.regionFilters, pluginInfo.GetInterval(), pluginInfo.GetRegionIDs()){
+			for _, pluginInfo := range schedule.PluginsMap {
+				regionIDs := schedule.GetRegionIDs(cluster, pluginInfo.GetKeyStart(), pluginInfo.GetKeyEnd())
+				if schedule.RegionFilterSource(cluster, region, s.regionFilters, pluginInfo.GetInterval(), regionIDs) {
 					allow = false
 					break
 				}
@@ -167,7 +167,7 @@ func (s *balanceRegionScheduler) Schedule(cluster schedule.Cluster) []*schedule.
 		if !allow {
 			continue
 		}
-		
+
 		oldPeer := region.GetStorePeer(sourceID)
 		if op := s.transferPeer(cluster, region, oldPeer, opInfluence); op != nil {
 			schedulerCounter.WithLabelValues(s.GetName(), "new_operator").Inc()

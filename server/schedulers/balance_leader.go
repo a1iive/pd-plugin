@@ -51,13 +51,13 @@ func newBalanceLeaderScheduler(opController *schedule.OperatorController) schedu
 	}
 	regionFilters := []schedule.RegionFilter{}
 	//get func from plugin
-	//func : NewLeaderFilter()
-	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewLeaderFilter")
+	//func : NewViolentFilter()
+	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewViolentFilter")
 	if err != nil {
 		log.Error("Plugin GetFunction err", zap.Error(err))
 	} else {
-		NewLeaderFilter := f.(func() schedule.RegionFilter)
-		regionFilters = append(regionFilters, NewLeaderFilter())
+		NewViolentFilter := f.(func() schedule.RegionFilter)
+		regionFilters = append(regionFilters, NewViolentFilter())
 	}
 	base := newBaseScheduler(opController)
 	s := &balanceLeaderScheduler{
@@ -153,8 +153,11 @@ func (l *balanceLeaderScheduler) transferLeaderOut(source *core.StoreInfo, clust
 	if len(l.regionFilters) != 0 {
 		for str, pluginInfo := range schedule.PluginsMap {
 			s := strings.Split(str, "-")
-			if s[0] == "Leader" && schedule.RegionFilterSource(cluster, region, l.regionFilters, pluginInfo.GetInterval(), pluginInfo.GetRegionIDs()) {
-				return nil
+			if s[0] == "Leader" {
+				regionIDs := schedule.GetRegionIDs(cluster, pluginInfo.GetKeyStart(), pluginInfo.GetKeyEnd())
+				if schedule.RegionFilterSource(cluster, region, l.regionFilters, pluginInfo.GetInterval(), regionIDs) {
+					return nil
+				}
 			}
 		}
 	}
@@ -188,8 +191,11 @@ func (l *balanceLeaderScheduler) transferLeaderIn(target *core.StoreInfo, cluste
 	if len(l.regionFilters) != 0 {
 		for str, pluginInfo := range schedule.PluginsMap {
 			s := strings.Split(str, "-")
-			if s[0] == "Leader" && schedule.RegionFilterSource(cluster, region, l.regionFilters, pluginInfo.GetInterval(), pluginInfo.GetRegionIDs()) {
-				return nil
+			if s[0] == "Leader" {
+				regionIDs := schedule.GetRegionIDs(cluster, pluginInfo.GetKeyStart(), pluginInfo.GetKeyEnd())
+				if schedule.RegionFilterSource(cluster, region, l.regionFilters, pluginInfo.GetInterval(), regionIDs) {
+					return nil
+				}
 			}
 		}
 	}

@@ -10,7 +10,6 @@ import (
 
 func ProduceScheduler(cfg schedule.Config, opController *schedule.OperatorController, cluster schedule.Cluster) []schedule.Scheduler {
 	storeMap := cfg.GetStoreId(cluster)
-	cfg.GetRegionId(cluster)
 	intervalMaps := cfg.GetInterval()
 	schedules := []schedule.Scheduler{}
 	pairs := cfg.IfNeedCheckStore()
@@ -27,16 +26,20 @@ func ProduceScheduler(cfg schedule.Config, opController *schedule.OperatorContro
 	if allow {
 		schedule.PluginsMapLock.Lock()
 		defer schedule.PluginsMapLock.Unlock()
-		for str, _ := range storeMap {
-			schedule.PluginsMap[str].UpdateRegionIDs(cluster)
+
+		for str, storeIDs := range storeMap {
 			schedule.PluginsMap[str].UpdateStoreIDs(cluster)
 			s := strings.Split(str, "-")
 			if s[0] == "Leader" {
 				name := "move-leader-use-scheduler-" + s[1]
-				schedules = append(schedules, newMoveLeaderUserScheduler(opController, name, intervalMaps[str]))
+				schedules = append(schedules,
+					newMoveLeaderUserScheduler(opController, name,
+						schedule.PluginsMap[str].GetKeyStart(), schedule.PluginsMap[str].GetKeyEnd(), storeIDs, intervalMaps[str]))
 			} else {
 				name := "move-region-use-scheduler-" + s[1]
-				schedules = append(schedules, newMoveRegionUserScheduler(opController, name, intervalMaps[str]))
+				schedules = append(schedules,
+					newMoveRegionUserScheduler(opController, name,
+						schedule.PluginsMap[str].GetKeyStart(), schedule.PluginsMap[str].GetKeyEnd(), storeIDs, intervalMaps[str]))
 			}
 		}
 	}

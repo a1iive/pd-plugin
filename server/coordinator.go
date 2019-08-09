@@ -274,7 +274,7 @@ func (c *coordinator) readUserConfig() {
 	ProduceScheduler := f2.(func(schedule.Config, *schedule.OperatorController, schedule.Cluster) []schedule.Scheduler)
 
 	userConfig := NewUserConfig()
-	if userConfig.LoadConfig(){
+	if userConfig.LoadConfig() {
 		schedulers := ProduceScheduler(userConfig, c.opController, c.cluster)
 		for _, s := range schedulers {
 			if err = c.addUserScheduler(s); err != nil {
@@ -289,7 +289,7 @@ func (c *coordinator) readUserConfig() {
 	for {
 		<-s
 		log.Info("user config changed")
-		if userConfig.LoadConfig(){
+		if userConfig.LoadConfig() {
 			schedulers := ProduceScheduler(userConfig, c.opController, c.cluster)
 			for _, s := range schedulers {
 				if err = c.addUserScheduler(s); err != nil {
@@ -297,7 +297,6 @@ func (c *coordinator) readUserConfig() {
 				}
 			}
 		}
-		
 	}
 }
 
@@ -449,13 +448,16 @@ func (c *coordinator) addScheduler(scheduler schedule.Scheduler, args ...string)
 }
 
 func (c *coordinator) addUserScheduler(scheduler schedule.Scheduler, args ...string) error {
-
+	c.RLock()
 	if _, ok := c.schedulers[scheduler.GetName()]; ok {
+		c.RUnlock()
 		if err := c.removeScheduler(scheduler.GetName()); err != nil {
 			log.Error("can not remove scheduler", zap.String("scheduler-name", scheduler.GetName()), zap.Error(err))
 		}
+	}else{
+		c.RUnlock()
 	}
-
+	
 	c.Lock()
 	defer c.Unlock()
 

@@ -79,17 +79,15 @@ func (uc *userConfig) LoadConfig() bool {
 	if uc.cfg != nil && uc.IfConflict() {
 		return false
 	}
-	uc.version++
 
 	for i, info := range uc.cfg.Leaders.Leader {
 		pi := &schedule.PluginInfo{
-			Persist:   info.Persist,
-			KeyStart:  info.KeyStart,
-			KeyEnd:    info.KeyEnd,
-			Interval:  &schedule.TimeInterval{Begin: info.StartTime, End: info.EndTime},
-			Stores:    info.Stores,
-			RegionIDs: []uint64{},
-			StoreIDs:  []uint64{},
+			Persist:  info.Persist,
+			KeyStart: info.KeyStart,
+			KeyEnd:   info.KeyEnd,
+			Interval: &schedule.TimeInterval{Begin: info.StartTime, End: info.EndTime},
+			Stores:   info.Stores,
+			StoreIDs: []uint64{},
 		}
 		str := "Leader-" + strconv.Itoa(i)
 		schedule.PluginsMap[str] = pi
@@ -97,17 +95,18 @@ func (uc *userConfig) LoadConfig() bool {
 
 	for i, info := range uc.cfg.Regions.Region {
 		pi := &schedule.PluginInfo{
-			Persist:   info.Persist,
-			KeyStart:  info.KeyStart,
-			KeyEnd:    info.KeyEnd,
-			Interval:  &schedule.TimeInterval{Begin: info.StartTime, End: info.EndTime},
-			Stores:    info.Stores,
-			RegionIDs: []uint64{},
-			StoreIDs:  []uint64{},
+			Persist:  info.Persist,
+			KeyStart: info.KeyStart,
+			KeyEnd:   info.KeyEnd,
+			Interval: &schedule.TimeInterval{Begin: info.StartTime, End: info.EndTime},
+			Stores:   info.Stores,
+			StoreIDs: []uint64{},
 		}
 		str := "Region-" + strconv.Itoa(i)
 		schedule.PluginsMap[str] = pi
 	}
+
+	uc.version++
 	return true
 }
 
@@ -223,10 +222,16 @@ func (uc *userConfig) IfConflict() bool {
 	for i, l1 := range uc.cfg.Leaders.Leader {
 		for j, l2 := range uc.cfg.Leaders.Leader {
 			if i < j {
-				if (l1.KeyStart < l2.KeyStart && l1.KeyEnd > l2.KeyStart) ||
-					(l2.KeyStart < l1.KeyStart && l2.KeyEnd > l1.KeyStart) {
-					log.Error("Key Range Conflict", zap.Ints("Config Move-Leader Nums", []int{i, j}))
-					ret = true
+				if (l1.KeyStart <= l2.KeyStart && l1.KeyEnd > l2.KeyStart) ||
+					(l2.KeyStart <= l1.KeyStart && l2.KeyEnd > l1.KeyStart) {
+					if ((l1.StartTime.Before(l2.StartTime) || l1.StartTime.Equal(l2.StartTime)) && 
+						l1.EndTime.After(l2.StartTime)) || 
+						((l2.StartTime.Before(l1.StartTime) || l2.StartTime.Equal(l1.StartTime)) && 
+							l2.EndTime.After(l1.StartTime)) {
+						log.Error("Key Range Conflict", zap.Ints("Config Move-Leader Nums", []int{i, j}))
+						ret = true
+					}
+
 				}
 			}
 		}
@@ -235,10 +240,15 @@ func (uc *userConfig) IfConflict() bool {
 	for i, r1 := range uc.cfg.Regions.Region {
 		for j, r2 := range uc.cfg.Regions.Region {
 			if i < j {
-				if (r1.KeyStart < r2.KeyStart && r1.KeyEnd > r2.KeyStart) ||
-					(r2.KeyStart < r1.KeyStart && r2.KeyEnd > r1.KeyStart) {
-					log.Error("Key Range Conflict", zap.Ints("Config Move-Region Nums", []int{i, j}))
-					ret = true
+				if (r1.KeyStart <= r2.KeyStart && r1.KeyEnd > r2.KeyStart) ||
+					(r2.KeyStart <= r1.KeyStart && r2.KeyEnd > r1.KeyStart) {
+					if ((r1.StartTime.Before(r2.StartTime) || r1.StartTime.Equal(r2.StartTime)) &&
+						r1.EndTime.After(r2.StartTime)) ||
+						((r2.StartTime.Before(r1.StartTime) || r2.StartTime.Equal(r1.StartTime)) &&
+							r2.EndTime.After(r1.StartTime)) {
+						log.Error("Key Range Conflict", zap.Ints("Config Move-Region Nums", []int{i, j}))
+						ret = true
+					}
 				}
 			}
 		}
@@ -250,9 +260,14 @@ func (uc *userConfig) IfNeedCheckStore() [][]int {
 	ret := [][]int{}
 	for i, l := range uc.cfg.Leaders.Leader {
 		for j, r := range uc.cfg.Regions.Region {
-			if (l.KeyStart < r.KeyStart && l.KeyEnd > r.KeyStart) ||
-				(r.KeyStart < l.KeyStart && r.KeyEnd > l.KeyStart) {
-				ret = append(ret, []int{i, j})
+			if (l.KeyStart <= r.KeyStart && l.KeyEnd > r.KeyStart) ||
+				(r.KeyStart <= l.KeyStart && r.KeyEnd > l.KeyStart) {
+				if ((l.StartTime.Before(r.StartTime) || l.StartTime.Equal(r.StartTime)) &&
+					l.EndTime.After(r.StartTime)) ||
+					((r.StartTime.Before(l.StartTime) || r.StartTime.Equal(l.StartTime)) &&
+						r.EndTime.After(l.StartTime)) {
+					ret = append(ret, []int{i, j})
+				}
 			}
 		}
 	}

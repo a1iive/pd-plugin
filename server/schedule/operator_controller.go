@@ -191,12 +191,10 @@ func (oc *OperatorController) AddWaitingOperator(ops ...*Operator) bool {
 		oc.Unlock()
 		return false
 	}
-	log.Info("put operator", zap.String("op", op.String()))
 	oc.wop.PutOperator(op)
 	operatorWaitCounter.WithLabelValues(op.Desc(), "put").Inc()
 	// This step is especially for the merge operation.
 	if len(ops) > 1 {
-		log.Info("put operator", zap.String("op", ops[1].String()))
 		oc.wop.PutOperator(ops[1])
 	}
 	oc.wopStatus.ops[desc]++

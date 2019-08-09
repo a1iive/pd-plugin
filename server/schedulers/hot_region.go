@@ -84,13 +84,13 @@ type balanceHotRegionsScheduler struct {
 func newBalanceHotRegionsScheduler(opController *schedule.OperatorController) *balanceHotRegionsScheduler {
 	regionFilters := []schedule.RegionFilter{}
 	//get func from plugin
-	//func : NewLeaderFilter()
-	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewLeaderFilter")
+	//func : NewViolentFilter()
+	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewViolentFilter")
 	if err != nil {
 		log.Error("Plugin GetFunction err", zap.Error(err))
 	} else {
-		NewLeaderFilter := f.(func() schedule.RegionFilter)
-		regionFilters = append(regionFilters, NewLeaderFilter())
+		NewViolentFilter := f.(func() schedule.RegionFilter)
+		regionFilters = append(regionFilters, NewViolentFilter())
 	}
 	base := newBaseScheduler(opController)
 	return &balanceHotRegionsScheduler{
@@ -130,13 +130,13 @@ func newBalanceHotReadRegionsScheduler(opController *schedule.OperatorController
 func newBalanceHotWriteRegionsScheduler(opController *schedule.OperatorController) *balanceHotRegionsScheduler {
 	regionFilters := []schedule.RegionFilter{}
 	//get func from plugin
-	//func : NewLeaderFilter()
-	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewLeaderFilter")
+	//func : NewViolentFilter()
+	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewViolentFilter")
 	if err != nil {
 		log.Error("Plugin GetFunction err", zap.Error(err))
 	} else {
-		NewLeaderFilter := f.(func() schedule.RegionFilter)
-		regionFilters = append(regionFilters, NewLeaderFilter())
+		NewViolentFilter := f.(func() schedule.RegionFilter)
+		regionFilters = append(regionFilters, NewViolentFilter())
 	}
 	base := newBaseScheduler(opController)
 	return &balanceHotRegionsScheduler{
@@ -201,9 +201,12 @@ func (h *balanceHotRegionsScheduler) balanceHotReadRegions(cluster schedule.Clus
 		if len(h.regionFilters) != 0 {
 			for str, pluginInfo := range schedule.PluginsMap {
 				s := strings.Split(str, "-")
-				if s[0] == "Leader" && schedule.RegionFilterSource(cluster, srcRegion, h.regionFilters, pluginInfo.GetInterval(), pluginInfo.GetRegionIDs()) {
-					allow = false
-					break
+				if s[0] == "Leader" {
+					regionIDs := schedule.GetRegionIDs(cluster, pluginInfo.GetKeyStart(), pluginInfo.GetKeyEnd())
+					if schedule.RegionFilterSource(cluster, srcRegion, h.regionFilters, pluginInfo.GetInterval(), regionIDs) {
+						allow = false
+						break
+					}
 				}
 			}
 		}
@@ -221,7 +224,8 @@ func (h *balanceHotRegionsScheduler) balanceHotReadRegions(cluster schedule.Clus
 		allow := true
 		if len(h.regionFilters) != 0 {
 			for _, pluginInfo := range schedule.PluginsMap {
-				if schedule.RegionFilterSource(cluster, srcRegion, h.regionFilters, pluginInfo.GetInterval(), pluginInfo.GetRegionIDs()) {
+				regionIDs := schedule.GetRegionIDs(cluster, pluginInfo.GetKeyStart(), pluginInfo.GetKeyEnd())
+				if schedule.RegionFilterSource(cluster, srcRegion, h.regionFilters, pluginInfo.GetInterval(), regionIDs) {
 					allow = false
 					break
 				}
@@ -257,7 +261,8 @@ func (h *balanceHotRegionsScheduler) balanceHotWriteRegions(cluster schedule.Clu
 				allow := true
 				if len(h.regionFilters) != 0 {
 					for _, pluginInfo := range schedule.PluginsMap {
-						if schedule.RegionFilterSource(cluster, srcRegion, h.regionFilters, pluginInfo.GetInterval(), pluginInfo.GetRegionIDs()) {
+						regionIDs := schedule.GetRegionIDs(cluster, pluginInfo.GetKeyStart(), pluginInfo.GetKeyEnd())
+						if schedule.RegionFilterSource(cluster, srcRegion, h.regionFilters, pluginInfo.GetInterval(), regionIDs) {
 							allow = false
 							break
 						}
@@ -282,9 +287,12 @@ func (h *balanceHotRegionsScheduler) balanceHotWriteRegions(cluster schedule.Clu
 				if len(h.regionFilters) != 0 {
 					for str, pluginInfo := range schedule.PluginsMap {
 						s := strings.Split(str, "-")
-						if s[0] == "Leader" && schedule.RegionFilterSource(cluster, srcRegion, h.regionFilters, pluginInfo.GetInterval(), pluginInfo.GetRegionIDs()) {
-							allow = false
-							break
+						if s[0] == "Leader" {
+							regionIDs := schedule.GetRegionIDs(cluster, pluginInfo.GetKeyStart(), pluginInfo.GetKeyEnd())
+							if schedule.RegionFilterSource(cluster, srcRegion, h.regionFilters, pluginInfo.GetInterval(), regionIDs) {
+								allow = false
+								break
+							}
 						}
 					}
 				}

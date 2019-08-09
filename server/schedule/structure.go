@@ -13,52 +13,50 @@ import (
 )
 
 type PluginInfo struct {
-	Persist   bool
-	KeyStart  string
-	KeyEnd    string
-	Interval  *TimeInterval
-	Stores    []StoreLabels
-	RegionIDs []uint64
-	StoreIDs  []uint64
+	Persist  bool
+	KeyStart string
+	KeyEnd   string
+	Interval *TimeInterval
+	Stores   []StoreLabels
+	StoreIDs []uint64
 }
 
 func (p *PluginInfo) GetInterval() *TimeInterval {
-	return p.Interval
-}
+	if p != nil {
+		return p.Interval
+	} else {
+		return nil
+	}
 
-func (p *PluginInfo) GetRegionIDs() []uint64 {
-	return p.RegionIDs
 }
 
 func (p *PluginInfo) GetStoreIDs() []uint64 {
-	return p.StoreIDs
+	if p != nil {
+		return p.StoreIDs
+	} else {
+		return []uint64{}
+	}
 }
 
-func (p *PluginInfo) UpdateRegionIDs(cluster Cluster) {
-	p.RegionIDs = []uint64{}
-	//decode key form string to []byte
-	startKey, err := hex.DecodeString(p.KeyStart)
-	if err != nil {
-		log.Error("can not decode", zap.String("key:", p.KeyStart))
+func (p *PluginInfo) GetKeyStart() string {
+	if p != nil {
+		return p.KeyStart
+	} else {
+		return ""
 	}
-	endKey, err := hex.DecodeString(p.KeyEnd)
-	if err != nil {
-		log.Info("can not decode", zap.String("key:", p.KeyEnd))
-	}
-
-	lastKey := []byte{}
-	regions := cluster.ScanRangeWithEndKey(startKey, endKey)
-	for _, region := range regions {
-		p.RegionIDs = append(p.RegionIDs, region.GetID())
-		lastKey = region.GetEndKey()
-	}
-	lastRegion := cluster.ScanRegions(lastKey, 1)
-	if len(lastRegion) != 0 {
-		p.RegionIDs = append(p.RegionIDs, lastRegion[0].GetID())
+}
+func (p *PluginInfo) GetKeyEnd() string {
+	if p != nil {
+		return p.KeyEnd
+	} else {
+		return ""
 	}
 }
 
 func (p *PluginInfo) UpdateStoreIDs(cluster Cluster) {
+	if p == nil {
+		return
+	}
 	p.StoreIDs = []uint64{}
 	for _, s := range p.Stores {
 		if store := GetStoreByLabel(cluster, s.StoreLabel); store != nil {
@@ -79,6 +77,22 @@ type StoreLabels struct {
 type TimeInterval struct {
 	Begin time.Time
 	End   time.Time
+}
+
+func (t *TimeInterval) GetBegin() time.Time{
+	if t != nil {
+		return t.Begin
+	} else {
+		return time.Time{}
+	}
+}
+
+func (t *TimeInterval) GetEnd() time.Time{
+	if t != nil {
+		return t.End
+	} else {
+		return time.Time{}
+	}
 }
 
 var PluginsMapLock = sync.RWMutex{}
@@ -134,4 +148,32 @@ func GetStoreByLabel(cluster Cluster, storeLabel []Label) *core.StoreInfo {
 		}
 	}
 	return nil
+}
+
+func GetRegionIDs(cluster Cluster, keyStart, keyEnd string) []uint64 {
+	regionIDs := []uint64{}
+	//decode key form string to []byte
+	startKey, err := hex.DecodeString(keyStart)
+	if err != nil {
+		log.Error("can not decode", zap.String("key:", keyStart))
+		return regionIDs
+	}
+	endKey, err := hex.DecodeString(keyEnd)
+	if err != nil {
+		log.Info("can not decode", zap.String("key:", keyEnd))
+		return regionIDs
+	}
+
+	lastKey := []byte{}
+	regions := cluster.ScanRangeWithEndKey(startKey, endKey)
+	for _, region := range regions {
+		regionIDs = append(regionIDs, region.GetID())
+		lastKey = region.GetEndKey()
+	}
+	lastRegion := cluster.ScanRegions(lastKey, 1)
+	if len(lastRegion) != 0 {
+		regionIDs = append(regionIDs, lastRegion[0].GetID())
+		
+	}
+	return regionIDs
 }

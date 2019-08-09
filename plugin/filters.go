@@ -6,38 +6,38 @@ import (
 	"time"
 )
 
-type leaderFilter struct {
+type violentFilter struct {
 }
 
-func NewLeaderFilter() schedule.RegionFilter {
-	return &leaderFilter{}
+func NewViolentFilter() schedule.RegionFilter {
+	return &violentFilter{}
 }
 
-func (f *leaderFilter) Type() string {
+func (f *violentFilter) Type() string {
 	return "leader-filter"
 }
 
-func (f *leaderFilter) FilterSource(opt schedule.Options, region *core.RegionInfo, interval *schedule.TimeInterval, regionIDs []uint64) bool {
+func (f *violentFilter) FilterSource(opt schedule.Options, region *core.RegionInfo, interval *schedule.TimeInterval, regionIDs []uint64) bool {
 	if interval != nil {
 		currentTime := time.Now()
 		if currentTime.After(interval.End) || interval.Begin.After(currentTime) {
 			return false
 		}
 	}
-	return f.isExist(region.GetID(), regionIDs)
+	return f.isExists(region.GetID(), regionIDs)
 }
 
-func (f *leaderFilter) FilterTarget(opt schedule.Options, region *core.RegionInfo, interval *schedule.TimeInterval, regionIDs []uint64) bool {
+func (f *violentFilter) FilterTarget(opt schedule.Options, region *core.RegionInfo, interval *schedule.TimeInterval, regionIDs []uint64) bool {
 	if interval != nil {
 		currentTime := time.Now()
 		if currentTime.After(interval.End) || interval.Begin.After(currentTime) {
 			return false
 		}
 	}
-	return f.isExist(region.GetID(), regionIDs)
+	return f.isExists(region.GetID(), regionIDs)
 }
 
-func (f *leaderFilter) isExist(regionID uint64, regionIDs []uint64) bool {
+func (f *violentFilter) isExists(regionID uint64, regionIDs []uint64) bool {
 	for _, id := range regionIDs {
 		if id == regionID {
 			return true
