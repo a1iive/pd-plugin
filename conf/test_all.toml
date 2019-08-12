@@ -1,0 +1,106 @@
+[Leaders]
+[[Leaders.Leader]]
+    Persist   = true
+    KeyStart  = "757365727461626C653A7573657231773937383833313437333137333731323135"
+    KeyEnd    = "757365727461626C653A7573657239973036373639353831393732343031333937"
+    StartTime = "2019-08-05T14:55:00+08:00"
+    EndTime   = "2019-08-30T10:30:00+08:00"
+    [[Leaders.Leader.Stores]]
+        [[Leaders.Leader.Stores.StoreLabel]]
+            Key   = "zone"
+            Value = "z3"
+        [[Leaders.Leader.Stores.StoreLabel]]
+            Key   = "rack"
+            Value = "r3"
+        [[Leaders.Leader.Stores.StoreLabel]]
+            Key   = "host"
+            Value = "h3"
+[[Leaders.Leader]]
+    Persist   = true
+    KeyStart  = "757365727461626C653A7573657231773937383833313437333137333731323135"
+    KeyEnd    = "757365727461626C653A7573657239973036373639353831393732343031333937"
+    StartTime = "2019-08-05T07:30:00+08:00"
+    EndTime   = "2019-08-30T10:30:00+08:00"
+    [[Leaders.Leader.Stores]]
+        [[Leaders.Leader.Stores.StoreLabel]]
+            Key   = "zone"
+            Value = "z1"
+        [[Leaders.Leader.Stores.StoreLabel]]
+            Key   = "rack"
+            Value = "r1"
+        [[Leaders.Leader.Stores.StoreLabel]]
+            Key   = "host"
+            Value = "h1"
+    [[Leaders.Leader.Stores]]
+        [[Leaders.Leader.Stores.StoreLabel]]
+            Key   = "zone"
+            Value = "z5"
+        [[Leaders.Leader.Stores.StoreLabel]]
+            Key   = "rack"
+            Value = "r5"
+        [[Leaders.Leader.Stores.StoreLabel]]
+            Key   = "host"
+            Value = "h5"
+[Regions]
+[[Regions.Region]]
+    Persist   = true
+    KeyStart  = "757365727461626C653A7573657231773937383833313437333137333731323135"
+    KeyEnd    = "757365727461626C653A7573657239973036373639353831393732343031333937"
+    StartTime = "2019-08-05T07:30:00+08:00"
+    EndTime   = "2019-08-30T10:30:00+08:00"
+    [[Regions.Region.Stores]]
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "zone"
+            Value = "z1"
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "rack"
+            Value = "r1"
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "host"
+            Value = "h1"
+    [[Regions.Region.Stores]]
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "zone"
+            Value = "z2"
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "rack"
+            Value = "r2"
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "host"
+            Value = "h2"
+    [[Regions.Region.Stores]]
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "zone"
+            Value = "z3"
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "rack"
+            Value = "r3"
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "host"
+            Value = "h3"
+[[Regions.Region]]
+    Persist   = true
+    KeyStart  = "757365727461626C653A7573657231773937383833313437333137333731323135"
+    KeyEnd    = "757365727461626C653A7573657239973036373639353831393732343031333937"
+    StartTime = "2019-08-05T07:30:00+08:00"
+    EndTime   = "2019-08-30T10:30:00+08:00"
+    [[Regions.Region.Stores]]
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "zone"
+            Value = "z4"
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "rack"
+            Value = "r4"
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "host"
+            Value = "h4"
+    [[Regions.Region.Stores]]
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "zone"
+            Value = "z5"
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "rack"
+            Value = "r5"
+        [[Regions.Region.Stores.StoreLabel]]
+            Key   = "host"
+            Value = "h5"
