@@ -42,13 +42,13 @@ func newLabelScheduler(opController *schedule.OperatorController) schedule.Sched
 	}
 	regionFilters := []schedule.RegionFilter{}
 	//get func from plugin
-	//func : NewLeaderFilter()
-	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewLeaderFilter")
+	//func : NewViolentFilter()
+	f, err := schedule.GetFunction("./plugin/userConfigPlugin.so", "NewViolentFilter")
 	if err != nil {
 		log.Error("Plugin GetFunction err", zap.Error(err))
 	} else {
-		NewLeaderFilter := f.(func() schedule.RegionFilter)
-		regionFilters = append(regionFilters, NewLeaderFilter())
+		NewViolentFilter := f.(func() schedule.RegionFilter)
+		regionFilters = append(regionFilters, NewViolentFilter())
 	}
 	return &labelScheduler{
 		baseScheduler: newBaseScheduler(opController),
@@ -89,11 +89,14 @@ func (s *labelScheduler) Schedule(cluster schedule.Cluster) []*schedule.Operator
 		if region := cluster.RandLeaderRegion(id); region != nil {
 			allow := true
 			if len(s.regionFilters) != 0 {
-				for str, pluginInfo := range schedule.PluginsMap{
+				for str, pluginInfo := range schedule.PluginsMap {
 					ss := strings.Split(str, "-")
-					if ss[0] == "Leader" && schedule.RegionFilterSource(cluster, region, s.regionFilters, pluginInfo.GetInterval(), pluginInfo.GetRegionIDs()){
-						allow = false
-						break
+					if ss[0] == "Leader" {
+						regionIDs := schedule.GetRegionIDs(cluster, pluginInfo.GetKeyStart(), pluginInfo.GetKeyEnd())
+						if schedule.RegionFilterSource(cluster, region, s.regionFilters, pluginInfo.GetInterval(), regionIDs){
+							allow = false
+							break
+						}
 					}
 				}
 			}

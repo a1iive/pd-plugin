@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/pingcap/pd/server/schedule"
-	"log"
 	"time"
 )
 
@@ -14,33 +13,9 @@ type userBaseScheduler struct {
 const (
 	MaxScheduleInterval     = time.Second * 5
 	MinScheduleInterval     = time.Millisecond * 10
-	MinSlowScheduleInterval = time.Second * 3
 
 	ScheduleIntervalFactor = 1.3
 )
-
-type intervalGrowthType int
-
-const (
-	exponentailGrowth intervalGrowthType = iota
-	linearGrowth
-	zeroGrowth
-)
-
-// intervalGrow calculates the next interval of balance.
-func intervalGrow(x time.Duration, maxInterval time.Duration, typ intervalGrowthType) time.Duration {
-	switch typ {
-	case exponentailGrowth:
-		return minDuration(time.Duration(float64(x)*ScheduleIntervalFactor), maxInterval)
-	case linearGrowth:
-		return minDuration(x+MinSlowScheduleInterval, maxInterval)
-	case zeroGrowth:
-		return x
-	default:
-		log.Fatal("unknown interval growth type")
-	}
-	return 0
-}
 
 func newUserBaseScheduler(opController *schedule.OperatorController) *userBaseScheduler {
 	return &userBaseScheduler{opController: opController}
@@ -55,7 +30,7 @@ func (s *userBaseScheduler) GetMinInterval() time.Duration {
 }
 
 func (s *userBaseScheduler) GetNextInterval(interval time.Duration) time.Duration {
-	return intervalGrow(interval, MaxScheduleInterval, exponentailGrowth)
+	return minDuration(time.Duration(float64(interval)*ScheduleIntervalFactor), MaxScheduleInterval)
 }
 
 func minDuration(a, b time.Duration) time.Duration {

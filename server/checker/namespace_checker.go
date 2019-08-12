@@ -37,13 +37,13 @@ func NewNamespaceChecker(cluster schedule.Cluster, classifier namespace.Classifi
 	}
 	regionFilters := []schedule.RegionFilter{}
 	//get func from plugin
-	//func : NewLeaderFilter()
-	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewLeaderFilter")
+	//func : NewViolentFilter()
+	f, err := schedule.GetFunction("./plugin/userConfigPlugin.so", "NewViolentFilter")
 	if err != nil {
 		log.Error("Plugin GetFunction err", zap.Error(err))
 	} else {
-		NewLeaderFilter := f.(func() schedule.RegionFilter)
-		regionFilters = append(regionFilters, NewLeaderFilter())
+		NewViolentFilter := f.(func() schedule.RegionFilter)
+		regionFilters = append(regionFilters, NewViolentFilter())
 	}
 
 	return &NamespaceChecker{
@@ -64,8 +64,9 @@ func (n *NamespaceChecker) Check(region *core.RegionInfo) *schedule.Operator {
 	}
 	//skip user regions
 	if len(n.regionFilters) != 0 {
-		for _, pluginInfo := range schedule.PluginsMap{
-			if  schedule.RegionFilterSource(n.cluster, region, n.regionFilters, pluginInfo.GetInterval(), pluginInfo.GetRegionIDs()){
+		for _, pluginInfo := range schedule.PluginsMap {
+			regionIDs := schedule.GetRegionIDs(n.cluster, pluginInfo.GetKeyStart(), pluginInfo.GetKeyEnd())
+			if schedule.RegionFilterSource(n.cluster, region, n.regionFilters, pluginInfo.GetInterval(), regionIDs) {
 				return nil
 			}
 		}
