@@ -213,6 +213,8 @@ func (s *testPluginCodeSuite) TestBaseScheduler(c *C) {
 	c.Assert(lb.GetNextInterval(interval), Equals, time.Duration(1300))
 }
 
+//test structure.go 
+//func GetRegionIDs()
 func (s *testPluginCodeSuite) TestGetRegionIDs(c *C) {
 	regionIDs := schedule.GetRegionIDs(s.tc,"757365727461626C653A7573657231773937383833313437333137333731323135",
 		"757365727461626C653A7573657234443637353232383738383832303830353737")
@@ -222,6 +224,8 @@ func (s *testPluginCodeSuite) TestGetRegionIDs(c *C) {
 	c.Assert(regionIDs[2], Equals, uint64(4))
 }
 
+//test structure.go 
+//func GetStoreByLabel()
 func (s *testPluginCodeSuite) TestGetStoreByLabel(c *C) {
 	label1 := schedule.Label{Key: "zone", Value: "z1"}
 	label2 := schedule.Label{Key: "rack", Value: "r1"}

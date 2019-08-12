@@ -84,16 +84,10 @@ func (s *testUserConfigSuite) TestProduceScheduler(c *C) {
 	c.Assert(uc.LoadConfig(filePath), Equals, true)
 	
 	cluster.PutStoreWithLabels(1, "zone", "z1", "rack", "r1", "host", "h1")
-	cluster.SetStoreUp(1)
 	cluster.PutStoreWithLabels(2, "zone", "z2", "rack", "r2", "host", "h2")
-	cluster.SetStoreUp(2)
 	cluster.PutStoreWithLabels(3, "zone", "z3", "rack", "r3", "host", "h3")
-	cluster.SetStoreUp(3)
 	cluster.PutStoreWithLabels(4, "zone", "z4", "rack", "r4", "host", "h4")
-	cluster.SetStoreUp(4)
 	cluster.PutStoreWithLabels(5, "zone", "z5", "rack", "r5", "host", "h5")
-	cluster.SetStoreUp(5)
-	
 	schedulers := ProduceScheduler(uc, opc, cluster)
 	c.Assert(schedulers, NotNil)
 	c.Assert(len(schedulers), Equals, 4)

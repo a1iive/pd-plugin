@@ -54,7 +54,6 @@ func (m *MergeChecker) RecordRegionSplit(regionID uint64) {
 
 // Check verifies a region's replicas, creating an Operator if need.
 func (m *MergeChecker) Check(region *core.RegionInfo) []*schedule.Operator {
-	//TODO ： 冲突如何处理
 	if m.splitCache.Exists(mergeBlockMarker) {
 		checkerCounter.WithLabelValues("merge_checker", "recently_start").Inc()
 		return nil
