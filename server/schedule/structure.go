@@ -122,7 +122,6 @@ func GetFunction(path string, funcName string) (plugin.Symbol, error) {
 	PluginLock.RLock()
 	defer PluginLock.RUnlock()
 	//get func from plugin
-	//func : NewUserConfig()
 	f, err := Plugin.Lookup(funcName)
 	if err != nil {
 		return nil, err

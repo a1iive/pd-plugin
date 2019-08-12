@@ -14,7 +14,7 @@ func NewViolentFilter() schedule.RegionFilter {
 }
 
 func (f *violentFilter) Type() string {
-	return "leader-filter"
+	return "violent-filter"
 }
 
 func (f *violentFilter) FilterSource(opt schedule.Options, region *core.RegionInfo, interval *schedule.TimeInterval, regionIDs []uint64) bool {

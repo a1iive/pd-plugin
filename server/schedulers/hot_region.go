@@ -85,7 +85,7 @@ func newBalanceHotRegionsScheduler(opController *schedule.OperatorController) *b
 	regionFilters := []schedule.RegionFilter{}
 	//get func from plugin
 	//func : NewViolentFilter()
-	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewViolentFilter")
+	f, err := schedule.GetFunction("./plugin/userConfigPlugin.so", "NewViolentFilter")
 	if err != nil {
 		log.Error("Plugin GetFunction err", zap.Error(err))
 	} else {
@@ -108,7 +108,7 @@ func newBalanceHotReadRegionsScheduler(opController *schedule.OperatorController
 	regionFilters := []schedule.RegionFilter{}
 	//get func from plugin
 	//func : NewLeaderFilter()
-	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewLeaderFilter")
+	f, err := schedule.GetFunction("./plugin/userConfigPlugin.so", "NewLeaderFilter")
 	if err != nil {
 		log.Error("Plugin GetFunction err", zap.Error(err))
 	} else {
@@ -131,7 +131,7 @@ func newBalanceHotWriteRegionsScheduler(opController *schedule.OperatorControlle
 	regionFilters := []schedule.RegionFilter{}
 	//get func from plugin
 	//func : NewViolentFilter()
-	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewViolentFilter")
+	f, err := schedule.GetFunction("./plugin/userConfigPlugin.so", "NewViolentFilter")
 	if err != nil {
 		log.Error("Plugin GetFunction err", zap.Error(err))
 	} else {

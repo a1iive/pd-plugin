@@ -68,8 +68,8 @@ func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 	}
 
 	l.regionIDs = schedule.GetRegionIDs(cluster, l.keyStart, l.keyEnd)
-	log.Info("",zap.String("name", l.GetName()),zap.Uint64s("ids",l.regionIDs))
-
+	log.Info("", zap.String("name", l.GetName()), zap.Uint64s("Regions", l.regionIDs))
+	log.Info("", zap.String("name", l.GetName()), zap.Uint64s("Stores", l.storeIDs))
 	if len(l.storeIDs) == 0 {
 		return nil
 	}
@@ -90,11 +90,11 @@ func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 				if s[0] == "Region" {
 					regionIDs := schedule.GetRegionIDs(cluster, pluginInfo.GetKeyStart(), pluginInfo.GetKeyEnd())
 					if l.isExists(regionID, regionIDs) {
-						if ((l.timeInterval.GetBegin().Before(pluginInfo.GetInterval().GetBegin()) || 
+						if ((l.timeInterval.GetBegin().Before(pluginInfo.GetInterval().GetBegin()) ||
 							l.timeInterval.GetBegin().Equal(pluginInfo.GetInterval().GetBegin())) &&
 							l.timeInterval.GetEnd().After(pluginInfo.GetInterval().GetBegin())) ||
 							((pluginInfo.GetInterval().GetBegin().Before(l.timeInterval.GetBegin()) ||
-							pluginInfo.GetInterval().GetBegin().Equal(l.timeInterval.GetBegin())) &&
+								pluginInfo.GetInterval().GetBegin().Equal(l.timeInterval.GetBegin())) &&
 								pluginInfo.GetInterval().GetEnd().After(l.timeInterval.GetBegin())) {
 							overlap := IfOverlap(l.storeIDs, pluginInfo.GetStoreIDs())
 							if len(overlap) != 0 {
@@ -117,14 +117,14 @@ func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 					schedule.StoreStateFilter{TransferLeader: true},
 				}
 				if schedule.FilterSource(cluster, source, filters) {
-					log.Info("filter source", zap.String("scheduler", l.GetName()), 
-						zap.Uint64("region-id",regionID),
+					log.Info("filter source", zap.String("scheduler", l.GetName()),
+						zap.Uint64("region-id", regionID),
 						zap.Uint64("store-id", sourceID))
 					continue
-				} 
-				if schedule.FilterTarget(cluster, target, filters){
+				}
+				if schedule.FilterTarget(cluster, target, filters) {
 					log.Info("filter target", zap.String("scheduler", l.GetName()),
-						zap.Uint64("region-id",regionID),
+						zap.Uint64("region-id", regionID),
 						zap.Uint64("store-id", targetID))
 					continue
 				}
@@ -138,13 +138,13 @@ func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 				}
 				if schedule.FilterSource(cluster, source, filters) {
 					log.Info("filter source", zap.String("scheduler", l.GetName()),
-						zap.Uint64("region-id",regionID),
+						zap.Uint64("region-id", regionID),
 						zap.Uint64("store-id", sourceID))
 					continue
 				}
-				if schedule.FilterTarget(cluster, target, filters){
+				if schedule.FilterTarget(cluster, target, filters) {
 					log.Info("filter target", zap.String("scheduler", l.GetName()),
-						zap.Uint64("region-id",regionID),
+						zap.Uint64("region-id", regionID),
 						zap.Uint64("store-id", targetID))
 					continue
 				}
@@ -155,7 +155,7 @@ func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 				}
 				op, err := schedule.CreateMoveLeaderOperator("move-leader-user", cluster, region, schedule.OpAdmin, sourceID, targetID, destPeer.GetId())
 				if err != nil {
-					log.Error("CreateMoveLeaderOperator Err",zap.String("scheduler", l.GetName()),
+					log.Error("CreateMoveLeaderOperator Err", zap.String("scheduler", l.GetName()),
 						zap.Error(err))
 					continue
 				}

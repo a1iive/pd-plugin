@@ -43,7 +43,7 @@ func newLabelScheduler(opController *schedule.OperatorController) schedule.Sched
 	regionFilters := []schedule.RegionFilter{}
 	//get func from plugin
 	//func : NewViolentFilter()
-	f, err := schedule.GetFunction("./plugin/testPlugin.so", "NewViolentFilter")
+	f, err := schedule.GetFunction("./plugin/userConfigPlugin.so", "NewViolentFilter")
 	if err != nil {
 		log.Error("Plugin GetFunction err", zap.Error(err))
 	} else {

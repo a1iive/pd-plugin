@@ -259,14 +259,14 @@ func (c *coordinator) readUserConfig() {
 	defer c.wg.Done()
 	//get func from plugin
 	//func : NewUserConfig()
-	f1, err := schedule.GetFunction("./plugin/testPlugin.so", "NewUserConfig")
+	f1, err := schedule.GetFunction("./plugin/userConfigPlugin.so", "NewUserConfig")
 	if err != nil {
 		log.Error("GetFunction err", zap.Error(err))
 		return
 	}
 	NewUserConfig := f1.(func() schedule.Config)
 	//func : ProduceScheduler()
-	f2, err := schedule.GetFunction("./plugin/testPlugin.so", "ProduceScheduler")
+	f2, err := schedule.GetFunction("./plugin/userConfigPlugin.so", "ProduceScheduler")
 	if err != nil {
 		log.Error("GetFunction err", zap.Error(err))
 		return
@@ -274,7 +274,7 @@ func (c *coordinator) readUserConfig() {
 	ProduceScheduler := f2.(func(schedule.Config, *schedule.OperatorController, schedule.Cluster) []schedule.Scheduler)
 
 	userConfig := NewUserConfig()
-	if userConfig.LoadConfig() {
+	if userConfig.LoadConfig("./conf/user_config.toml") {
 		schedulers := ProduceScheduler(userConfig, c.opController, c.cluster)
 		for _, s := range schedulers {
 			if err = c.addUserScheduler(s); err != nil {
@@ -289,7 +289,7 @@ func (c *coordinator) readUserConfig() {
 	for {
 		<-s
 		log.Info("user config changed")
-		if userConfig.LoadConfig() {
+		if userConfig.LoadConfig("./conf/user_config.toml") {
 			schedulers := ProduceScheduler(userConfig, c.opController, c.cluster)
 			for _, s := range schedulers {
 				if err = c.addUserScheduler(s); err != nil {

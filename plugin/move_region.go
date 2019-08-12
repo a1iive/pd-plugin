@@ -65,8 +65,8 @@ func (r *moveRegionUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 	}
 
 	r.regionIDs = schedule.GetRegionIDs(cluster, r.keyStart, r.keyEnd)
-	log.Info("",zap.String("name", r.GetName()),zap.Uint64s("ids",r.regionIDs))
-	
+	log.Info("", zap.String("name", r.GetName()), zap.Uint64s("Regions",r.regionIDs))
+	log.Info("", zap.String("name", r.GetName()), zap.Uint64s("Stores", r.storeIDs))
 
 	if len(r.storeIDs) == 0 {
 		return nil
