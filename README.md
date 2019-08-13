@@ -11,6 +11,7 @@ PD is the abbreviation for Placement Driver. It is used to manage and schedule t
 
 PD supports distribution and fault-tolerance by embedding [etcd](https://github.com/etcd-io/etcd).
 
+PD supports pluggable user rules. The rules are specified by the configuration [file](https://github.com/a1iive/pd-plugin/blob/dev/conf/user_config.toml)
 ## Build
 
 1. Make sure [​*Go*​](https://golang.org/) (version 1.12) is installed.
@@ -110,3 +111,14 @@ to learn how to set up the cluster and run them.
 
 You can also use [Docker](https://pingcap.com/docs/dev/how-to/deploy/orchestrated/docker/#deploy-tidb-using-docker)
 to run the cluster.
+
+
+### Plugin
+
+You can change config in [user_config.toml](https://github.com/a1iive/pd-plugin/blob/dev/conf/user_config.toml).
+There are two types of rules can be defined, one is move-leader and the other is move-region.
+After change config, run signal.sh to apply in pd.
+
+```bash
+./plugin/signal.sh
+```
