@@ -1,9 +1,9 @@
 package schedule
 
 type Config interface {
-	LoadConfig(path string) bool
+	LoadConfig(path string, maxReplicas int) bool
 	GetStoreId(cluster Cluster) map[string][]uint64
 	GetInterval() map[string]*TimeInterval
-	IfConflict() bool
+	IfConflict(maxReplicas int) bool
 	IfNeedCheckStore() [][]int
 }

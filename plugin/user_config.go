@@ -61,7 +61,7 @@ func NewUserConfig() schedule.Config {
 // Load and decode config file
 // if conflict, return false
 // if not conflict, reset pluginMap 
-func (uc *userConfig) LoadConfig(path string) bool {
+func (uc *userConfig) LoadConfig(path string, maxReplicas int) bool {
 	filePath, err := filepath.Abs(path)
 	if err != nil {
 		log.Error("open file failed", zap.Error(err))
@@ -78,7 +78,7 @@ func (uc *userConfig) LoadConfig(path string) bool {
 	schedule.PluginsMapLock.Lock()
 	defer schedule.PluginsMapLock.Unlock()
 	uc.cfg = cfg
-	if uc.cfg != nil && uc.IfConflict() {
+	if uc.cfg != nil && uc.IfConflict(maxReplicas) {
 		return false
 	}
 	schedule.PluginsMap = make(map[string]*schedule.PluginInfo)
@@ -158,7 +158,7 @@ func (uc *userConfig) GetInterval() map[string]*schedule.TimeInterval {
 
 // Check if there are conflicts in similar type of rules
 // eg. move-leader&move-leader or move-region&move-region
-func (uc *userConfig) IfConflict() bool {
+func (uc *userConfig) IfConflict(maxReplicas int) bool {
 	ret := false
 	// move_leaders
 	for i, l1 := range uc.cfg.Leaders.Leader {
@@ -193,6 +193,13 @@ func (uc *userConfig) IfConflict() bool {
 					}
 				}
 			}
+		}
+	}
+	// store nums > max replicas
+	for i, r := range uc.cfg.Regions.Region {
+		if len(r.Stores) > maxReplicas {
+			log.Error("the number of stores is beyond the max replicas", zap.Int("Config Move-Region Nums", i))
+			ret = true
 		}
 	}
 	return ret

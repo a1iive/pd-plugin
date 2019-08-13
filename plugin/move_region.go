@@ -108,6 +108,7 @@ func (r *moveRegionUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 		return nil
 	}
 	
+	replicas := cluster.GetMaxReplicas()
 	for _, regionID := range r.regionIDs {
 		region := cluster.GetRegion(regionID)
 		if region == nil {
@@ -118,7 +119,6 @@ func (r *moveRegionUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 		// it means user's rules has been met,
 		// then do nothing
 		if !r.allExist(storeIDs, region) {
-			replicas := cluster.GetMaxReplicas()
 			// if region max-replicas > target stores length,
 			// add the store where the original peer is located sequentially,
 			// until target stores length = max-replicas

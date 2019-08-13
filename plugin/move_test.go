@@ -91,7 +91,7 @@ func (s *testPluginCodeSuite) TestMoveScheduler(c *C) {
 	filePath, err := filepath.Abs("../conf/test_config.toml")
 	c.Assert(err, IsNil)
 	uc := NewUserConfig()
-	c.Assert(uc.LoadConfig(filePath), Equals, true)
+	c.Assert(uc.LoadConfig(filePath, 3), Equals, true)
 	c.Assert(uc, NotNil)
 
 
@@ -165,7 +165,7 @@ func (s *testPluginCodeSuite) TestMoveScheduler(c *C) {
 	filePath, err = filepath.Abs("../conf/test_conflict2.toml")
 	c.Assert(err, IsNil)
 	uc = NewUserConfig()
-	c.Assert(uc.LoadConfig(filePath), Equals, true)
+	c.Assert(uc.LoadConfig(filePath, 3), Equals, true)
 	c.Assert(uc, NotNil)
 	schedule.PluginsMapLock.Lock()
 	name := "Leader-1"
