@@ -1,144 +1,100 @@
-<!--
-This is a template for TiDB's change proposal process, documented [here](./README.md).
--->
+# Proposal: Pluggable PD scheduler <!-- Title -->
 
-# Proposal: 可插入式的PD调度器<!-- Title -->
-
-- Author(s): 梁晋荣[https://github.com/dimstars](https://github.com/dimstars)，胡皓胜[https://github.com/a1iive](https://github.com/a1iive)  <!-- Author Name, Co-Author Name, with the link(s) of the GitHub profile page -->
-- Last updated: 2019-08-02  <!-- Date -->
-- Discussion at: todo  <!-- https://github.com/pingcap/tidb/issues/XXX -->
-
+- Author(s): Liang Jinrong[https://github.com/dimstars](https://github.com/dimstars)，Hu Haosheng[https://github.com/a1iive](https://github.com/a1iive)
+- Last updated: 2019-08-02
+- Discussion at: https://github.com/pingcap/pd/issues
 ## Abstract
 
-- 目前PD的调度策略是平衡负载，但有时候用户有更为细致的需求，比如某些数据在某段时间会被大量访问，需要将其部署到高性能的结点上，就要求PD让用户能够自定义调度规则，管理数据。
-- 新增调度插件，解析规则，生成scheduler调度用户指定的数据。在PD中添加解决调度冲突的代码，使原有调度不会影响用户的调度。
-- 可插入式的PD调度器，支持用户自定义调度规则，支持动态更新配置文件，在满足用户需求的前提下尽可能平衡集群负载。可能出现集群负载不均衡，增加的检查机制也会带来少量额外的开销。
-<!--
-A short summary of the proposal:
-- What is the issue that the proposal aims to solve?
-- What needs to be done in this proposal?
-- What is the impact of this proposal?
--->
+- Currently, PD's scheduling strategy is load-balancing, but sometimes users have more detailed requirements. For example, some data will be frequently accessed in a certain period of time, and it needs to be deployed to high-performance nodes. PD needs to allow users to customize scheduling rules and manage data.
+- Add scheduling plugins to parse rules and generate scheduler to schedule user-specified data. Add code to PD to resolve scheduling conflicts so that the original scheduling will not affect the user's scheduling.
+- The pluggable PD scheduler supports user-defined scheduling rules, supports dynamic update of configuration files, and balances the cluster load as much as possible while satisfying user requirements. Cluster load imbalance may occur, and the added inspection mechanism will bring a small amount of additional overhead.
 
 ## Background
 
-- 某些应用场景下，TiKV的用户可能发出短时间高爆发的访问，比如上下班时间对共享单车的需求。而PD调度采用的是动态平衡的策略，虽然能够根据访问量动态调整数据分布，但被动的调度还是有些力不从心。也就是说，目前的PD缺乏满足特定用户需求的能力，不能根据不同的应用场景改变调度的策略。
-- 本提议期望PD能够支持用户自定义调度规则，动态获取用户的配置并应用到调度中，解决用户规则和原有调度之间的冲突，在满足用户要求的前提下尽可能平衡负载。
-<!--
-An introduction of the necessary background and the problem being solved by the proposed change:
-- The drawback of the current feature and the corresponding use case
-- The expected outcome of this proposal.
--->
-
-<!--
-## Proposal
-### new named concepts
-- LeaderDistribution
-- RegionDistribution
--->
+- In some application scenarios, TiKV users may issue short bursts of access, such as the demand for Shared bikes during rush hours. PD scheduling adopts a dynamic balance strategy. Although it can dynamically adjust the data distribution according to the visits, it cannot be deployed in advance, so passive scheduling seems to be a little difficult.
+- In addition, load balancing assumes that all servers perform similarly.While server performance can vary significantly, users want critical data on high-performance machines.That is to say, PD currently lacks the ability to meet specific user needs and cannot change scheduling strategies according to different application scenarios.
+- This proposal expects PD to support user-defined scheduling rules, dynamically acquire user configurations and apply them to scheduling, resolve conflicts between user rules and original scheduling, and balance load as much as possible on the premise of meeting user requirements.
 
 ### overview
-通过动态地解析用户配置文件，获取和应用用户自定义规则，满足用户特定的调度需求。
+By dynamically parsing the user configuration file, obtain and apply user-defined rules to meet the specific scheduling needs of users.
 ### How it works?
-- 利用toml配置文件解析用户自定义规则，解析操作在插件中完成，然后根据用户定义的规则生成对应的scheduler，完成相应调度。
-- 用户可以随时修改配置文件，之后向PD进程发起SIGUSR1系统调用信号就可以使其重新读取配置。
-- 我们将规则转化为具体资源（region、leader、store）的调度操作，存在PD中，在原有调度选择source或target时，过滤掉用户指定的部分数据，在其他数据中选择进行调度。
+- The "toml" configuration file is used to parse the user-defined rules, and the parsing operation is completed in the plugin. Then, the corresponding scheduler is generated according to the user-defined rules to complete the corresponding scheduling.
+- The user can modify the configuration file at any time and then issue a SIGUSR1 system call signal to the PD process to re-read the configuration.
+- We translate rules into scheduling operations of specific resources (region, leader, store), which are stored in PD. When the original scheduling selects source or target, part of the data specified by the user is filtered out, and other data is selected for scheduling.
 ### What needs to be changed to implement this design?
-- 编写golang plugin，能够解析toml配置文件并生成对应的scheduler，当新的规则出现时，转化为PD可识别的格式存储到PD中。
-- 在PD启动时注册插件，同时调用插件获取用户自定义规则，存到内存中。
-- 添加处理调度冲突的代码
+- Write the golang plugin to parse the toml configuration file and generate the appropriate scheduler.When a new rule appears, it is converted to a format recognized by PD and stored in PD.
+- Register the plugin at PD startup and call the plugin to retrieve user-defined rules and store them in memory.
+- Add code to handle scheduling conflicts.
 ### What may be positively influenced by the proposed change?
-支持用户自定义调度规则，支持动态更新配置文件，更好地适应各种应用场景。
+The proposal supports user-defined scheduling rules and dynamic update of configuration files to better adapt to various application scenarios.
 ### What may be negatively impacted by the proposed change?
-可能出现集群负载不均衡，增加的检查机制也会带来少量额外的开销。
-<!--
-A precise statement of the proposed change:
-- The new named concepts and a set of metrics to be collected in this proposal (if applicable)
-- The overview of the design.
-- How it works?
-- What needs to be changed to implement this design?
-- What may be positively influenced by the proposed change?
-- What may be negatively impacted by the proposed change?
--->
+The cluster load may be unbalanced, and the additional checking mechanism may bring a small additional overhead.
 
 ## Rationale
 ### How other systems solve the same issue?
-- 提供抽象化的调度规则供用户定义。
-- 使用配置文件获取用户自定义规则。
-- 将抽象规则解析为具体的调度。
-- 处理原生规则和用户规则的冲突。
+- Provide abstract scheduling rules for user definition.
+- Use configuration files to get user-defined rules.
+- Resolve abstract rules into concrete schedules.
+- Handle conflicts between native rules and user rules.
 ### What other designs have been considered and what are their disadvantages?
-为了避免冲突，只使用原有调度或者用户自定义调度，设置开关进行控制。
-但这样做需要用户定义的规则具有较高的可行性，对自定义规则的抽象和用户的专业水平要求较高，用的不好很有可能导致数据不一致或者集群崩溃。
+To avoid conflicts, only use the original schedule or user-defined schedule, and set the switch for control.
+But doing so requires user-defined rules to be highly feasible.High level of abstraction of custom rules and professional level of users are required.Poor use can lead to inconsistent data or cluster crashes.
 ### What is the advantage of this design compared with other designs?
-- 修改插件的代码不影响PD的业务逻辑。
-- 用户自定义的调度规则可以很灵活，不管如何修改规则，插件只需要解析成对具体资源的调度就可以存到PD中。
-- 没有改变PD原有的框架结构，比较稳定。
-- 基本可以解决两套调度策略间的冲突，在满足用户要求的前提下尽可能平衡负载。
+- Modifying the plugin code does not affect PD's business logic.
+- User-defined scheduling rules can be flexible. Regardless of how the rule is modified, the plugin simply needs to parse it into a schedule for a specific resource and store it in PD.
+- Modifying the plugin code does not affect PD's business logic.User-defined scheduling rules can be flexible.Regardless of how the rule is modified, the plugin simply needs to parse it into a schedule for a specific resource and store it in PD.It does not change the original frame structure of PD.It's pretty stable.
+- The conflicts between the two scheduling policies can be basically solved and the load can be balanced as much as possible under the premise of meeting the requirements of users.
 ### What is the disadvantage of this design?
-- 由于用户定义的调度只考虑到部分数据，对整个集群没有宏观调控，可能出现集群负载不均衡。
-- 增加的检查机制也会带来少量额外的开销。
+- Since the user-defined scheduling only considers part of the data, there is no macro-control for the entire cluster, and the cluster load may be unbalanced.
+- The added checking mechanism also brings a small additional overhead.
 ### What is the impact of not doing this?
-缺乏满足特定用户需求的能力，不能根据不同的应用场景改变调度的策略。
-<!--
-A discussion of alternate approaches and the trade-offs, advantages, and disadvantages of the specified approach:
-- How other systems solve the same issue?
-- What other designs have been considered and what are their disadvantages?
-- What is the advantage of this design compared with other designs?
-- What is the disadvantage of this design?
-- What is the impact of not doing this?
--->
+Lack of ability to meet the needs of specific users, can not change the scheduling policy according to different application scenarios.
 
 ## Compatibility
 ### Does this proposal make TiDB not compatible with the old versions?
 No.
 ### Does this proposal make TiDB more compatible with MySQL?
 No.
-<!--
-A discussion of the change with regard to the compatibility issues:
-- Does this proposal make TiDB not compatible with the old versions?
-- Does this proposal make TiDB more compatible with MySQL?
--->
 
 ## Implementation
 ### User-defined rule
-#### 1. 通过label指定一段key range对应数据的leader到特定store上。
-- 如果目标store不存在指定region的peer，则将leader peer移动到该store；
-- 如果存在peer但他不是leader，则转移该region的leader；
-- 如果指定region的leader就在目标store上，不做操作。
-#### 2. 通过label指定一段key range对应数据的region副本到某些store上，或者指明这部分数据不存在某些store上。
-- 如果目标store数量大于或等于region的副本数，则将其他store上的该region的peer移动到没有该region副本的目标store上；
-- 如果目标store数量小于region的副本数，则随机选取region的部分副本移动到目标store上，直到目标store上都具有该region的一个副本，剩下的副本出于稳定性考虑不做处理，可以提示用户重新配置，或者在解析时就拦截用户的不合理配置。
-#### 3. 指定时间的调度
-- 在上述两种规则的基础上指定时间，start_time指定开始调度的时间，在结束时间end_time后解除对指定数据的限制，以便其他规则对其进行调度。
+#### 1. Specify a leader of data corresponding to a key range on a specific store through label.
+- If the target store does not have peer in the specified region, the leader peer is moved to the store.
+- If there is a peer but it is not a leader, then transfer the leader of the region.
+- If the leader of the region is on the target store, do nothing.
+- Given multiple stores, leaders are distributed evenly across those stores.
+#### 2. Specify a region copy of the corresponding data of a key range on some stores by label.
+- If the number of target stores is greater than or equal to the number of copies of the region, move peers of the region from other stores to the target store which has no copy of the region.
+- If the number of target stores is less than the number of copies of the region, randomly select some copies of the region and move them to the target store until all target stores have one copy of the region, leaving the remaining copies unprocessed.
+#### 3. Scheduling of specified times
+- Specify the time range on the above two rules, start_time specifies the time to start scheduling, and the restriction on specified data is lifted after end_time, so that other rules can schedule it.
 ### Profile parsing
-利用toml配置文件解析用户自定义规则，解析操作在插件中完成，然后根据用户定义的规则生成对应的scheduler。用户可以随时修改配置文件，之后向PD进程发起SIGUSR1系统调用信号就可以使其重新读取配置。
+The user-defined rules are parsed using the toml configuration file, the parsing is done in the plugin, and the corresponding scheduler is generated according to the user-defined rules.The user can modify the configuration file at any time and then issue a SIGUSR1 system call signal to the PD process to reread the configuration.
 ### Conflict handling
-- 原生规则移动用户指定的数据
+#### 1. Native rules move user-specified data
 
-	举例：用户自定义规则要求将数据a-d移动到指定store1上，原生规则（如balance_leader）出于平衡考虑，需要在store1上选取leader转移到store2上，就很可能把a-d中的某些数据移走，这样用户的规则就被破坏了。
+- Strategy: No other scheduler is allowed to move user-specified data.
 
-	解决：把用户的规则存到PD中，balance_leader在选择source region时，检查用户自定义规则，过滤掉a-d的数据对应region，就不会出现上述情况。
-- 用户自定义规则间的冲突
+	Example: User-defined rules require that the data a-d be moved to the specified store1, and native rules (such as balance_leader) that require the selected leader on store1 to be moved to store2 for the sake of balance are likely to move some data from a-d, thus breaking the user's rules.
+	
+	Solution: Store the user's rules in PD. When balance_leader selects the source region, he checks the user-defined rules and filters out the corresponding region of a-d data, and the above situation will not occur.
 
-	举例：用户定义的key range存在交叉，或由此得到regionId存在交叉，比如一条规则指定了region1-6的leader到store2上，又指定了region5-10的leader到store3上，那么如何决定region5、6的去向就成了问题。
+#### 2. Conflicts between user-defined rules
 
-	解决：对于这种情况，采取先来后到的方式，后一条规则不能拥有前面已指定数据的控制权。
-- 用户规则移动大量数据造成不平衡
+- Strategy 1: Overlapping key ranges and time periods between rules of the same type, reporting errors and stopping execution.
 
-	举例：在PD的良好调度下，现在所有的5个store负载都维持在60%左右，这时用户希望store1上调度很多region过去，可能占一个store的40%大小，这时store1短时间内就会接近满负载，而后续需要一段时间才能逐步平衡，期间集群的负载很不均衡，可用性和稳定性都可能下降。
+	Example: There are two rules about the distribution of leaders. A rule assigned leaders of  region1-6 to store2 and leaders of  region5-10 to store3, creating a problem deciding where to put the leaders of  regions 5 and 6.
 
-	解决：在执行自定义规则前需要对其进行评估，如果这些操作执行后会对集群有较大的影响，则应该考虑是否执行或者是否立即执行。可以的话，将大量数据的移动变得更为平滑，一边移入指定数据，一边移出其他无关数据，在动态平衡中完成规则的调度。如果用户的规则会使集群陷入危险脆弱的状态，则暂时不执行并警告用户。
+	Resolution: In this case, you can only refuse to execute the user's rules and prompt the user to modify the configuration file.
+- Strategy 2: Key ranges overlap between different types of rules and time periods overlap. If the target store has conflicts, it will not be executed.If the target store can be satisfied at the same time, proceed.
 
-<!--
-A detailed description for each step in the implementation:
-- Does any former steps block this step?
-- Who will do it?
-- When to do it?
-- How long it takes to accomplish it?
--->
+	Example: One rule assigned leaders of region1-6 to store2, and another named all copies of region5-10 to store3, 4, and 5, creating a problem deciding where to put region5 and 6.
 
-<!--
-## Open issues (if applicable)
-A discussion of issues relating to this proposal for which the author does not know the solution. This section may be omitted if there are none.
--->
+	Solution: The store specified by the rule defining the leader is not included in the store specified by the rule defining the region, so there is a conflict and it cannot be executed.If the previous rule specifies one of store3, 4, and 5, then both rules can be satisfied and continue.Or if the latter rule only specifies two stores, then one of the peers can be on any other store, and the two rules can be satisfied simultaneously.
+#### 3. User rules move large amounts of data causing imbalances
+
+- Strategy: Check whether the target store can load more data at the time of scheduling. If not, suspend the scheduling.
+
+	Example: Under the good scheduling of PD, all 5 store loads are now maintained at around 50%, at this time, users want to schedule many regions to store1, which may account for 60% of the size of a store, at this time, store1 will be close to full load in a short time, and the availability and stability may decline.
+
+	Solution: Custom rules need to be evaluated before they are executed, and if they have a significant impact on the cluster after they are executed, you should consider whether or not to execute them immediately.If possible, smooth the movement of large amounts of data.Moves in specified data while moving out other irrelevant data.Complete the scheduling of rules in dynamic balance.
