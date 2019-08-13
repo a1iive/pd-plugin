@@ -20,6 +20,8 @@ var _ = Suite(&testUserConfigSuite{})
 type testUserConfigSuite struct {
 }
 
+// Test config parse
+// Compare the results of the parse with the results of reading the file directly
 func (s *testUserConfigSuite) TestReadUserConfig(c *C) {
 	filePath, err := filepath.Abs("../conf/test_config.toml")
 	c.Assert(err, IsNil)
@@ -73,6 +75,8 @@ func (s *testUserConfigSuite) TestReadUserConfig(c *C) {
 	}
 }
 
+// test_config.toml contains 4 rules 
+// ProduceScheduler() will finally produce 4 schedulers
 func (s *testUserConfigSuite) TestProduceScheduler(c *C) {
 	opt := mockoption.NewScheduleOptions()
 	cluster := mockcluster.NewCluster(opt)
@@ -109,10 +113,18 @@ func (s *testUserConfigSuite) TestGetStoreId(c *C) {
 	schedule.PluginsMapLock.RLock()
 	defer schedule.PluginsMapLock.RUnlock()
 	for name, stores := range uc.GetStoreId(cluster) {
-		for i, store := range stores {
-			for _, label := range schedule.PluginsMap[name].Stores[i].StoreLabel {
-				c.Assert(strings.Contains(label.Value, strconv.Itoa(int(store))), Equals, true)
-			}
+		if name == "Leader-0" {
+			c.Assert(stores[0], Equals, uint64(3))
+		}else if name == "Leader-1" {
+			c.Assert(stores[0], Equals, uint64(1))
+			c.Assert(stores[1], Equals, uint64(5))
+		}else if name == "Region-0" {
+			c.Assert(stores[0], Equals, uint64(1))
+			c.Assert(stores[1], Equals, uint64(2))
+			c.Assert(stores[2], Equals, uint64(3))
+		}else if name == "Region-1" {
+			c.Assert(stores[0], Equals, uint64(4))
+			c.Assert(stores[1], Equals, uint64(5))
 		}
 	}
 }
@@ -125,16 +137,32 @@ func (s *testUserConfigSuite) TestGetInterval(c *C) {
 	schedule.PluginsMapLock.RLock()
 	defer schedule.PluginsMapLock.RUnlock()
 	for name, interval := range uc.GetInterval() {
-		c.Assert(interval.Begin, Equals, schedule.PluginsMap[name].GetInterval().GetBegin())
-		c.Assert(interval.End, Equals, schedule.PluginsMap[name].GetInterval().GetEnd())
+		if name == "Leader-0" {
+			begin, _ := time.ParseInLocation("2006-01-02 15:04:05", "2019-08-05 14:55:00", time.Local)
+			c.Assert(interval.GetBegin().Format("2006-01-02 15:04:05"), Equals, begin.Format("2006-01-02 15:04:05"))
+			end, _ := time.ParseInLocation("2006-01-02 15:04:05", "2019-08-30 10:30:00", time.Local)
+			c.Assert(interval.GetEnd().Format("2006-01-02 15:04:05"), Equals, end.Format("2006-01-02 15:04:05"))
+		}else if name == "Leader-1" {
+			begin, _ := time.ParseInLocation("2006-01-02 15:04:05", "2019-08-05 07:30:00", time.Local)
+			c.Assert(interval.GetBegin().Format("2006-01-02 15:04:05"), Equals, begin.Format("2006-01-02 15:04:05"))
+			end, _ := time.ParseInLocation("2006-01-02 15:04:05", "2019-08-30 10:30:00", time.Local)
+			c.Assert(interval.GetEnd().Format("2006-01-02 15:04:05"), Equals, end.Format("2006-01-02 15:04:05"))
+		}else if name == "Region-0" {
+			begin, _ := time.ParseInLocation("2006-01-02 15:04:05", "2019-08-05 07:30:00", time.Local)
+			c.Assert(interval.GetBegin().Format("2006-01-02 15:04:05"), Equals, begin.Format("2006-01-02 15:04:05"))
+			end, _ := time.ParseInLocation("2006-01-02 15:04:05", "2019-08-30 10:30:00", time.Local)
+			c.Assert(interval.GetEnd().Format("2006-01-02 15:04:05"), Equals, end.Format("2006-01-02 15:04:05"))
+		}else if name == "Region-1" {
+			begin, _ := time.ParseInLocation("2006-01-02 15:04:05", "2019-08-05 07:30:00", time.Local)
+			c.Assert(interval.GetBegin().Format("2006-01-02 15:04:05"), Equals, begin.Format("2006-01-02 15:04:05"))
+			end, _ := time.ParseInLocation("2006-01-02 15:04:05", "2019-08-30 10:30:00", time.Local)
+			c.Assert(interval.GetEnd().Format("2006-01-02 15:04:05"), Equals, end.Format("2006-01-02 15:04:05"))
+		}
 	}
 }
 
-// test irreconcilable conflict
+// Test irreconcilable conflict
 func (s *testUserConfigSuite) TestConflict(c *C) {
-	c.Assert(len(IfOverlap([]uint64{1, 2, 3}, []uint64{2, 3, 4})), Equals, 2)
-	c.Assert(len(IfOverlap([]uint64{1, 2, 3}, []uint64{4, 5, 6})), Equals, 0)
-
 	opt := mockoption.NewScheduleOptions()
 	cluster := mockcluster.NewCluster(opt)
 	htStream := mockhbstream.NewHeartbeatStream()
@@ -147,4 +175,9 @@ func (s *testUserConfigSuite) TestConflict(c *C) {
 	schedulers := ProduceScheduler(uc, opc, cluster)
 	c.Assert(schedulers, NotNil)
 	c.Assert(len(schedulers), Equals, 0)
+}
+
+func (s *testUserConfigSuite) TestIfOverlap(c *C) {
+	c.Assert(len(IfOverlap([]uint64{1, 2, 3}, []uint64{2, 3, 4})), Equals, 2)
+	c.Assert(len(IfOverlap([]uint64{1, 2, 3}, []uint64{4, 5, 6})), Equals, 0)
 }

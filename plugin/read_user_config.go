@@ -14,6 +14,9 @@ func ProduceScheduler(cfg schedule.Config, opController *schedule.OperatorContro
 	schedules := []schedule.Scheduler{}
 	pairs := cfg.IfNeedCheckStore()
 	allow := true
+	// if different types of rules have conflict,
+	// check whether the target stores intersect,
+	// and if so, the conflict is adjustable
 	for _, pair := range pairs {
 		l := "Leader-" + strconv.Itoa(pair[0])
 		r := "Region-" + strconv.Itoa(pair[1])
@@ -26,7 +29,7 @@ func ProduceScheduler(cfg schedule.Config, opController *schedule.OperatorContro
 	if allow {
 		schedule.PluginsMapLock.Lock()
 		defer schedule.PluginsMapLock.Unlock()
-
+		// produce schedulers
 		for str, storeIDs := range storeMap {
 			schedule.PluginsMap[str].UpdateStoreIDs(cluster)
 			s := strings.Split(str, "-")
@@ -46,6 +49,7 @@ func ProduceScheduler(cfg schedule.Config, opController *schedule.OperatorContro
 	return schedules
 }
 
+// IfOverlap(first, second) check wheher first and second intersect
 func IfOverlap(first, second []uint64) []uint64 {
 	ret := []uint64{}
 	for _, i := range first {

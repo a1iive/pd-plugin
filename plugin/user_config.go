@@ -58,6 +58,9 @@ func NewUserConfig() schedule.Config {
 	return ret
 }
 
+// Load and decode config file
+// if conflict, return false
+// if not conflict, reset pluginMap 
 func (uc *userConfig) LoadConfig(path string) bool {
 	filePath, err := filepath.Abs(path)
 	if err != nil {
@@ -153,6 +156,8 @@ func (uc *userConfig) GetInterval() map[string]*schedule.TimeInterval {
 	return ret
 }
 
+// Check if there are conflicts in similar type of rules
+// eg. move-leader&move-leader or move-region&move-region
 func (uc *userConfig) IfConflict() bool {
 	ret := false
 	// move_leaders
@@ -162,7 +167,7 @@ func (uc *userConfig) IfConflict() bool {
 				if (l1.KeyStart <= l2.KeyStart && l1.KeyEnd > l2.KeyStart) ||
 					(l2.KeyStart <= l1.KeyStart && l2.KeyEnd > l1.KeyStart) {
 					if ((l1.StartTime.Before(l2.StartTime) || l1.StartTime.Equal(l2.StartTime)) && 
-						l1.EndTime.After(l2.StartTime)) || 
+							l1.EndTime.After(l2.StartTime)) || 
 						((l2.StartTime.Before(l1.StartTime) || l2.StartTime.Equal(l1.StartTime)) && 
 							l2.EndTime.After(l1.StartTime)) {
 						log.Error("Key Range Conflict", zap.Ints("Config Move-Leader Nums", []int{i, j}))
@@ -180,7 +185,7 @@ func (uc *userConfig) IfConflict() bool {
 				if (r1.KeyStart <= r2.KeyStart && r1.KeyEnd > r2.KeyStart) ||
 					(r2.KeyStart <= r1.KeyStart && r2.KeyEnd > r1.KeyStart) {
 					if ((r1.StartTime.Before(r2.StartTime) || r1.StartTime.Equal(r2.StartTime)) &&
-						r1.EndTime.After(r2.StartTime)) ||
+							r1.EndTime.After(r2.StartTime)) ||
 						((r2.StartTime.Before(r1.StartTime) || r2.StartTime.Equal(r1.StartTime)) &&
 							r2.EndTime.After(r1.StartTime)) {
 						log.Error("Key Range Conflict", zap.Ints("Config Move-Region Nums", []int{i, j}))
@@ -193,6 +198,8 @@ func (uc *userConfig) IfConflict() bool {
 	return ret
 }
 
+// Check if there are conflicts in different type of rules
+// if conflicts exist, return ids groups to do further judgment
 func (uc *userConfig) IfNeedCheckStore() [][]int {
 	ret := [][]int{}
 	for i, l := range uc.cfg.Leaders.Leader {
@@ -200,7 +207,7 @@ func (uc *userConfig) IfNeedCheckStore() [][]int {
 			if (l.KeyStart <= r.KeyStart && l.KeyEnd > r.KeyStart) ||
 				(r.KeyStart <= l.KeyStart && r.KeyEnd > l.KeyStart) {
 				if ((l.StartTime.Before(r.StartTime) || l.StartTime.Equal(r.StartTime)) &&
-					l.EndTime.After(r.StartTime)) ||
+						l.EndTime.After(r.StartTime)) ||
 					((r.StartTime.Before(l.StartTime) || r.StartTime.Equal(l.StartTime)) &&
 						r.EndTime.After(l.StartTime)) {
 					ret = append(ret, []int{i, j})
