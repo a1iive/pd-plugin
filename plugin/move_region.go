@@ -30,7 +30,7 @@ func init() {
 
 func newMoveRegionUserScheduler(opController *schedule.OperatorController, name, keyStart, keyEnd string, storeIDs []uint64, interval *schedule.TimeInterval) schedule.Scheduler {
 	base := newUserBaseScheduler(opController)
-	log.Info("", zap.String("New", name),zap.Strings("key range", []string{keyStart, keyEnd}))
+	log.Info("", zap.String("New", name), zap.Strings("key range", []string{keyStart, keyEnd}))
 	return &moveRegionUserScheduler{
 		userBaseScheduler: base,
 		name:              name,
