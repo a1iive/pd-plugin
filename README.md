@@ -125,3 +125,4 @@ After change config, run signal.sh to apply in pd.
 ```bash
 ./plugin/signal.sh
 ```
+For more details, you can read [PROPOSAL.md](https://github.com/a1iive/pd-plugin/blob/master/PROPOSAL.md)
