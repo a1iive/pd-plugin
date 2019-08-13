@@ -116,7 +116,10 @@ to run the cluster.
 ### Plugin
 
 You can change config in [user_config.toml](https://github.com/a1iive/pd-plugin/blob/dev/conf/user_config.toml).
+
 There are two types of rules can be defined, one is move-leader and the other is move-region.
+
+
 After change config, run signal.sh to apply in pd.
 
 ```bash
