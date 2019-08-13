@@ -22,6 +22,8 @@ type moveLeaderUserScheduler struct {
 	timeInterval *schedule.TimeInterval
 }
 
+// Only use for register scheduler
+// newMoveLeaderUserScheduler() will be called manually
 func init() {
 	schedule.RegisterScheduler("move-leader-user", func(opController *schedule.OperatorController, args []string) (schedule.Scheduler, error) {
 		return newMoveLeaderUserScheduler(opController, "", "", "", []uint64{}, nil), nil
@@ -29,7 +31,7 @@ func init() {
 }
 
 func newMoveLeaderUserScheduler(opController *schedule.OperatorController, name, keyStart, keyEnd string, storeIDs []uint64, interval *schedule.TimeInterval) schedule.Scheduler {
-	log.Info("new"+name, zap.Strings("key range", []string{keyStart, keyEnd}))
+	log.Info("", zap.String("New", name), zap.Strings("key range", []string{keyStart, keyEnd}))
 	base := newUserBaseScheduler(opController)
 	return &moveLeaderUserScheduler{
 		userBaseScheduler: base,
@@ -59,20 +61,36 @@ func (l *moveLeaderUserScheduler) IsScheduleAllowed(cluster schedule.Cluster) bo
 func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule.Operator {
 	schedule.PluginsMapLock.RLock()
 	defer schedule.PluginsMapLock.RUnlock()
-	//if time limits
+	// Determine if there is a time limit
 	if l.timeInterval != nil {
 		currentTime := time.Now()
 		if currentTime.After(l.timeInterval.GetEnd()) || l.timeInterval.GetBegin().After(currentTime) {
 			return nil
 		}
 	}
-
-	l.regionIDs = schedule.GetRegionIDs(cluster, l.keyStart, l.keyEnd)
-	log.Info("", zap.String("name", l.GetName()), zap.Uint64s("Regions", l.regionIDs))
-	log.Info("", zap.String("name", l.GetName()), zap.Uint64s("Stores", l.storeIDs))
+	// When region ids change, re-output scheduler's regions and stores
+	output := false
+	newRegionIDs := schedule.GetRegionIDs(cluster, l.keyStart, l.keyEnd)
+	if len(l.regionIDs) != len(newRegionIDs){
+		output = true
+	}else{
+		for i, oldRegionID := range l.regionIDs{
+			if newRegionIDs[i] != oldRegionID{
+				output = true 
+				break
+			}
+		}
+	}
+	l.regionIDs = newRegionIDs
+	if output{
+		log.Info("", zap.String("schedule()", l.GetName()), zap.Uint64s("Regions", l.regionIDs))
+		log.Info("", zap.String("schedule()", l.GetName()), zap.Uint64s("Stores", l.storeIDs))
+	}
+	
 	if len(l.storeIDs) == 0 {
 		return nil
 	}
+	
 	for _, regionID := range l.regionIDs {
 		region := cluster.GetRegion(regionID)
 		if region == nil {
@@ -81,20 +99,25 @@ func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 		}
 		sourceID := region.GetLeader().GetStoreId()
 		source := cluster.GetStore(sourceID)
-		//如果leader不在选定stores上
+		// If leader is in target stores,
+		// it means user's rules has been met,
+		// then do nothing
 		if !l.isExists(sourceID, l.storeIDs) {
+			// Let "seq" store be the target first
 			targetID := l.storeIDs[l.storeSeq]
-			//if move-region and move-leader have conflict then find the overlapped store
+			// If move-region and move-leader have conflict, 
+			// it means the conflict is adjustable,
+			// then find the overlapped stores and choose the first one as final target store
 			for str, pluginInfo := range schedule.PluginsMap {
 				s := strings.Split(str, "-")
 				if s[0] == "Region" {
 					regionIDs := schedule.GetRegionIDs(cluster, pluginInfo.GetKeyStart(), pluginInfo.GetKeyEnd())
 					if l.isExists(regionID, regionIDs) {
 						if ((l.timeInterval.GetBegin().Before(pluginInfo.GetInterval().GetBegin()) ||
-							l.timeInterval.GetBegin().Equal(pluginInfo.GetInterval().GetBegin())) &&
-							l.timeInterval.GetEnd().After(pluginInfo.GetInterval().GetBegin())) ||
-							((pluginInfo.GetInterval().GetBegin().Before(l.timeInterval.GetBegin()) ||
-								pluginInfo.GetInterval().GetBegin().Equal(l.timeInterval.GetBegin())) &&
+								l.timeInterval.GetBegin().Equal(pluginInfo.GetInterval().GetBegin())) &&
+								l.timeInterval.GetEnd().After(pluginInfo.GetInterval().GetBegin())) ||
+							((pluginInfo.GetInterval().GetBegin().Before(l.timeInterval.GetBegin()) || 
+								pluginInfo.GetInterval().GetBegin().Equal(l.timeInterval.GetBegin())) && 
 								pluginInfo.GetInterval().GetEnd().After(l.timeInterval.GetBegin())) {
 							overlap := IfOverlap(l.storeIDs, pluginInfo.GetStoreIDs())
 							if len(overlap) != 0 {
@@ -105,6 +128,7 @@ func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 					}
 				}
 			}
+			// seq increase
 			if l.storeSeq < len(l.storeIDs)-1 {
 				l.storeSeq++
 			} else {
@@ -112,18 +136,20 @@ func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 			}
 			target := cluster.GetStore(targetID)
 			if _, ok := region.GetStoreIds()[targetID]; ok {
-				//target store has region peer, so transfer leader
+				// target store has region peer, so do "transfer leader"
 				filters := []schedule.Filter{
 					schedule.StoreStateFilter{TransferLeader: true},
 				}
 				if schedule.FilterSource(cluster, source, filters) {
-					log.Info("filter source", zap.String("scheduler", l.GetName()),
+					log.Info("filter source", 
+						zap.String("scheduler", l.GetName()),
 						zap.Uint64("region-id", regionID),
 						zap.Uint64("store-id", sourceID))
 					continue
 				}
 				if schedule.FilterTarget(cluster, target, filters) {
-					log.Info("filter target", zap.String("scheduler", l.GetName()),
+					log.Info("filter target", 
+						zap.String("scheduler", l.GetName()),
 						zap.Uint64("region-id", regionID),
 						zap.Uint64("store-id", targetID))
 					continue
@@ -132,18 +158,20 @@ func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 				op.SetPriorityLevel(core.HighPriority)
 				return []*schedule.Operator{op}
 			} else {
-				//target store doesn't have region peer, so move leader
+				// target store doesn't have region peer, so do "move leader"
 				filters := []schedule.Filter{
 					schedule.StoreStateFilter{MoveRegion: true},
 				}
 				if schedule.FilterSource(cluster, source, filters) {
-					log.Info("filter source", zap.String("scheduler", l.GetName()),
+					log.Info("filter source", 
+						zap.String("scheduler", l.GetName()),
 						zap.Uint64("region-id", regionID),
 						zap.Uint64("store-id", sourceID))
 					continue
 				}
 				if schedule.FilterTarget(cluster, target, filters) {
-					log.Info("filter target", zap.String("scheduler", l.GetName()),
+					log.Info("filter target", 
+						zap.String("scheduler", l.GetName()),
 						zap.Uint64("region-id", regionID),
 						zap.Uint64("store-id", targetID))
 					continue
@@ -155,7 +183,8 @@ func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 				}
 				op, err := schedule.CreateMoveLeaderOperator("move-leader-user", cluster, region, schedule.OpAdmin, sourceID, targetID, destPeer.GetId())
 				if err != nil {
-					log.Error("CreateMoveLeaderOperator Err", zap.String("scheduler", l.GetName()),
+					log.Error("CreateMoveLeaderOperator Err", 
+						zap.String("scheduler", l.GetName()),
 						zap.Error(err))
 					continue
 				}
@@ -167,6 +196,7 @@ func (l *moveLeaderUserScheduler) Schedule(cluster schedule.Cluster) []*schedule
 	return nil
 }
 
+// isExists(ID , IDs) determine if the ID is in IDs
 func (l *moveLeaderUserScheduler) isExists(ID uint64, IDs []uint64) bool {
 	for _, id := range IDs {
 		if id == ID {

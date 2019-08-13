@@ -79,7 +79,7 @@ type TimeInterval struct {
 	End   time.Time
 }
 
-func (t *TimeInterval) GetBegin() time.Time{
+func (t *TimeInterval) GetBegin() time.Time {
 	if t != nil {
 		return t.Begin
 	} else {
@@ -87,7 +87,7 @@ func (t *TimeInterval) GetBegin() time.Time{
 	}
 }
 
-func (t *TimeInterval) GetEnd() time.Time{
+func (t *TimeInterval) GetEnd() time.Time {
 	if t != nil {
 		return t.End
 	} else {
@@ -101,6 +101,7 @@ var PluginsMap = make(map[string]*PluginInfo)
 var PluginLock = sync.RWMutex{}
 var Plugin *plugin.Plugin = nil
 
+// get func by funcName from plugin(.so)
 func GetFunction(path string, funcName string) (plugin.Symbol, error) {
 	PluginLock.Lock()
 	if Plugin == nil {
@@ -169,10 +170,46 @@ func GetRegionIDs(cluster Cluster, keyStart, keyEnd string) []uint64 {
 		regionIDs = append(regionIDs, region.GetID())
 		lastKey = region.GetEndKey()
 	}
-	lastRegion := cluster.ScanRegions(lastKey, 1)
-	if len(lastRegion) != 0 {
-		regionIDs = append(regionIDs, lastRegion[0].GetID())
-		
+
+	if len(regions) == 0{
+		lastRegion := cluster.ScanRegions(startKey, 1)
+		if len(lastRegion) == 0{
+			return regionIDs
+		}else {
+			//if get the only one region, exclude it
+			if len(lastRegion[0].GetStartKey()) == 0 && len(lastRegion[0].GetEndKey()) == 0{
+				return regionIDs
+			}else {
+				//      startKey         endKey
+				//         |			   |
+				//     -----------------------------
+				// ...|	  region0  |    region1  | ...
+				//    -----------------------------
+				// key range span two regions
+				// choose region1
+				regionIDs = append(regionIDs, lastRegion[0].GetID())
+				return regionIDs
+			}
+		}
+	}else {
+		if len(lastKey) == 0{
+			// if regions last one is the last region
+			return regionIDs
+		}else {
+			//            startKey		                            endKey
+			//         	   |                                         |
+			//      -----------------------------------------------------------
+			// ... |	  region_i   |   ...   |     region_j   |    region_j+1   | ...
+			//     -----------------------------------------------------------
+			// ScanRangeWithEndKey(startKey, endKey) will get region i+1 to j
+			// lastKey = region_j's EndKey
+			// ScanRegions(lastKey, 1) then get region_j+1
+			// so finally get region i+1 to j+1
+			lastRegion := cluster.ScanRegions(lastKey, 1)
+			if len(lastRegion) != 0 {
+				regionIDs = append(regionIDs, lastRegion[0].GetID())
+			}
+			return regionIDs
+		}
 	}
-	return regionIDs
 }

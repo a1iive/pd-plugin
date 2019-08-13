@@ -202,6 +202,8 @@ func (s *testPluginCodeSuite) TestFilter(c *C) {
 	c.Assert(filter, NotNil)
 	c.Assert(filter.Type(), Equals, "violent-filter")
 	c.Assert(filter.FilterSource(s.tc, s.tc.GetRegion(21), &interval, []uint64{21, 22, 23}), Equals, true)
+	c.Assert(filter.FilterSource(s.tc, s.tc.GetRegion(21), &interval, []uint64{20, 22, 23}), Equals, false)
+	c.Assert(filter.FilterTarget(s.tc, s.tc.GetRegion(22), &interval, []uint64{21, 22, 23}), Equals, true)
 	c.Assert(filter.FilterTarget(s.tc, s.tc.GetRegion(22), &interval, []uint64{1, 2, 3}), Equals, false)
 }
 
