@@ -39,10 +39,6 @@ func ProduceScheduler(cfg schedule.Config, opController *schedule.OperatorContro
 					newMoveLeaderUserScheduler(opController, name,
 						schedule.PluginsMap[str].GetKeyStart(), schedule.PluginsMap[str].GetKeyEnd(), storeIDs, intervalMaps[str]))
 			} else {
-				if len(storeIDs) > cluster.GetMaxReplicas() {
-					log.Error("", zap.String("Error", "the number of stores beyond the max replicas"))
-					continue
-				}
 				name := "move-region-use-scheduler-" + s[1]
 				schedules = append(schedules,
 					newMoveRegionUserScheduler(opController, name,
