@@ -132,7 +132,13 @@ The user-defined rules are parsed using the toml configuration file, the parsing
 预期结果：顺利解析执行，最终结果与满足配置要求，重叠的key对应的region既在“region”规则指定的store上，它的leader也在“leader”规则指定的store上
 
 ### 集群配置
-#### 1 PingCAP服务器
+#### 1 服务器
+
+|      系统       | CPU  | 内存 | 硬盘 |
+| :-------------: | :--: | :--: | :--: |
+| CentOS 7.6 64位 |  16  | 32G  | 500G |
+
+
 #### 1 PD
 
 ```bash
