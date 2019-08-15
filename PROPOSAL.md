@@ -189,6 +189,7 @@ The user-defined rules are parsed using the toml configuration file, the parsing
 |        | Leader-1 | 5825，5830             | “z1”,   “r1”, “h1”   “z5”,   “r5”, “h5”                      | 10，3     |
 | region | Region-0 | 5818，5789，5814       | “z1”,   “r1”, “h1”   “z2”,   “r2”, “h2”   “z3”,   “r3”, “h3” | 10，13，2 |
 | 1      | Region-1 | 5795，5808，5801，4    | “z4”,   “r4”, “h4”   “z5”,   “r5”, “h5”                      | 1，3      |
+
 当前获取的RegionId和StoreId，与上表对应
 
 ![move leader](https://github.com/a1iive/pd-plugin/blob/master/plugin_test/test1-1.png)
