@@ -98,3 +98,250 @@ The user-defined rules are parsed using the toml configuration file, the parsing
 	Example: Under the good scheduling of PD, all 5 store loads are now maintained at around 50%, at this time, users want to schedule many regions to store1, which may account for 60% of the size of a store, at this time, store1 will be close to full load in a short time, and the availability and stability may decline.
 
 	Solution: Custom rules need to be evaluated before they are executed, and if they have a significant impact on the cluster after they are executed, you should consider whether or not to execute them immediately.If possible, smooth the movement of large amounts of data.Moves in specified data while moving out other irrelevant data.Complete the scheduling of rules in dynamic balance.
+
+## Test
+### 测试方案
+#### 1. 无冲突的综合功能测试
+
+简述：多move-leader多move-region，兼顾单个store和多个store  
+冲突：无  
+详细说明：定义一系列无冲突的调度规则，即涉及两种类型，且key range互不重叠的多个规则，既有单个目标store也有多个目标store   
+预期结果：顺利运行，region最终分布与配置文件描述一致
+
+#### 2. 不可调和的冲突测试
+
+- 同种规则间的冲突测试  
+
+	简述：同种规则间key range重叠，时间有交叉或不交叉  
+	冲突：有  
+	详细说明：一种类型的两条规则间，key range存在重叠，时间段也有交叉。另一种类型的两条规则间，key range存在重叠，但时间段没有交叉  
+	预期结果：时间存在交叉的两条规则会报错，时间不交叉的两条规则不会报错
+
+- 不同类型规则间的冲突测试
+
+	简述：不同类型规则间key range重叠，时间交叉，目标store无交集  
+	冲突：有  
+	详细说明：定义两组不同类型的规则，一组不同类型的规则间key range存在重叠，时间段也有交叉，并且“leader”类型规则的目标store与“region”类型规则的目标store不相交。另一组不同类型的规则间key range存在重叠，时间段也有交叉，但是“leader”类型规则的目标store与“region”类型规则的目标store存在交集  
+	预期结果：目标store无交叉关系的规则会报错，目标store有交叉关系的规则不会报错，但最终不能执行
+
+#### 3. 可调和的冲突测试
+
+简述：不同类型规则间key range重叠，时间交叉，目标store存在交集  
+冲突：有  
+详细说明：定义不同类型的规则，规则间key range存在重叠，时间段也有交叉，但是“leader”类型规则的目标store与“region”类型规则的目标store存在交集  
+预期结果：顺利解析执行，最终结果与满足配置要求，重叠的key对应的region既在“region”规则指定的store上，它的leader也在“leader”规则指定的store上
+
+### 集群配置
+#### 1 PingCAP服务器
+#### 1 PD
+
+```bash
+./bin/pd-server --name=pd1 \
+                --data-dir=pd1 \
+                --client-urls="http://127.0.0.1:2379" \
+                --peer-urls="http://127.0.0.1:2380" \
+                --initial-cluster="pd1=http://127.0.0.1:2380" \
+                --log-file=pd1.log
+```
+
+#### 5 TiKV
+
+运行脚本[runtikv](https://github.com/a1iive/pd-plugin/blob/master/runtikv.sh)(使用时修改文件内“tikvdir”为tikv所在目录)
+
+```bash
+./runtikv.sh 5
+```
+
+### 无冲突的综合功能测试
+
+#### 测试方法
+
+- 更换配置[user_config](https://github.com/a1iive/pd-plugin/blob/master/conf/user_config.toml)内容为[test1_config](https://github.com/a1iive/pd-plugin/blob/master/plugin_test/test1_config.toml)
+
+- 应用用户配置
+
+```bash
+./plugin/signal.sh
+```
+
+#### 用户自定义规则
+
+| 类型   |    名称 | StartKey | EndKey   | 目标StoreLabel                                               |
+| ------ | ------: | -------- | -------- | ------------------------------------------------------------ |
+| leader | Leader0 | ...1773… | ...3943… | “z3”,   “r3”, “h3”                                           |
+| leader | Leader1 | …3943... | …5743…   | “z1”,   “r1”, “h1”                                                           “z5”,   “r5”, “h5” |
+| region | Region0 | …5743…   | …6973…   | “z1”,   “r1”, “h1”                                                     “z2”,   “r2”, “h2”                                                    “z3”,   “r3”, “h3” |
+| region | Region1 | …6973…   | …9973…   | “z4”,   “r4”, “h4”                                                         “z5”, “r5”,   “h5” |
+
+定义了两种类型的4个规则，各个规则间的key range不重叠，调度leader的规则既有指定单个store也有指定多个store的，调度region的规则既有指定等同region副本数量的store也有少于副本数量的store
+
+#### 解析结果
+
+| 类型   | 名称     | RegionId               | 目标StoreLabel                                               | StoreId   |
+| ------ | -------- | ---------------------- | ------------------------------------------------------------ | --------- |
+| leader | Leader-0 | 5855，5836，5841，5846 | “z3”,   “r3”, “h3”                                           | 2         |
+|        | Leader-1 | 5825，5830             | “z1”,   “r1”, “h1”   “z5”,   “r5”, “h5”                      | 10，3     |
+| region | Region-0 | 5818，5789，5814       | “z1”,   “r1”, “h1”   “z2”,   “r2”, “h2”   “z3”,   “r3”, “h3” | 10，13，2 |
+| 1      | Region-1 | 5795，5808，5801，4    | “z4”,   “r4”, “h4”   “z5”,   “r5”, “h5”                      | 1，3      |
+当前获取的RegionId和StoreId，与上表对应
+
+![move leader](https://github.com/a1iive/pd-plugin/blob/master/plugin_test/test1-1.png)
+
+![move region](https://github.com/a1iive/pd-plugin/blob/master/plugin_test/test1-2.png)
+
+#### 测试结果
+
+|  类型  |   名称   | RegionId | StoreId（按序） |      |      |      |      |
+| :----: | :------: | :------: | :-------------: | :--: | :--: | :--: | :--: |
+|        |          |          |       10        |  13  |  2   |  1   |  3   |
+| leader | Leader-0 |   5855   |        F        |      |  L   |      |  F   |
+|        |          |   5836   |        F        |      |  L   |      |  F   |
+|        |          |   5841   |        F        |  F   |  L   |      |      |
+|        |          |   5846   |        F        |      |  L   |      |  F   |
+|        | Leader-1 |   5825   |                 |  F   |  F   |      |  L   |
+|        |          |   5830   |        F        |      |  F   |      |  L   |
+| region | Region-0 |   5818   |        F        |  L   |  F   |      |      |
+|        |          |   5789   |        L        |  F   |  F   |      |      |
+|        |          |   5814   |        F        |  L   |  F   |      |      |
+|        | Region-1 |   5795   |        F        |      |      |  L   |  F   |
+|        |          |   5808   |                 |  F   |      |  F   |  L   |
+|        |          |   5801   |                 |  L   |      |  F   |  F   |
+|        |          |    4     |                 |  F   |      |  L   |  F   |
+|   -    |   其他   |   5851   |        L        |      |      |  F   |  F   |
+
+其中“leader”类型的规则只需要指定region的leader在用户指定的某一个store上即可；“region”类型的规则需要指定region的所有副本都分布到指定store上（如果store数少于region的副本数，那么只需填满指定region即可，多出来的peer可任意分布）
+
+从结果来看，规则Leader-0覆盖region的leader都在指定的store（id=2）上，规则Leader-1覆盖region的leader都在指定的store（id=3）上。规则Region-0覆盖region的peer都在指定的store（id=10、13、2）上，至于它们的leader在哪一个store上则不是规则指定的内容。规则Region-1覆盖region的peer不全在指定的store（id=1、3）上，是因为store数量小于副本数，所以只需满足指定的store都有对应region的副本即可  
+
+测试结果与预期相符，插件能在无冲突的情况下完成用户自定义调度
+
+Region分布结果见[test1_result](https://github.com/a1iive/pd-plugin/blob/master/plugin_test/test1_result.txt)
+
+### 同种规则间的冲突测试
+
+#### 测试方法
+
+- 更换配置[user_config](https://github.com/a1iive/pd-plugin/blob/master/conf/user_config.toml)内容为[test2_config](https://github.com/a1iive/pd-plugin/blob/master/plugin_test/test2_config.toml)
+
+- 应用用户配置
+
+```bash
+./plugin/signal.sh
+```
+
+#### 用户自定义规则
+
+| 类型   | 名称     | StartKey | EndKey | 时间范围                                          | StoreLabel                                                   |
+| ------ | -------- | -------- | ------ | ------------------------------------------------- | ------------------------------------------------------------ |
+| leader | Leader-0 | …1773…   | …9973… | 2019-**08**-05-14:55:00 ~ 2019-**08**-30-10:30:00 | “z3”,   “r3”, “h3”                                           |
+|        | Leader-1 | …1773…   | …9973… | 2019-**07**-05-14:55:00 ~ 2019-**07**-30-10:30:00 | “z1”,   “r1”, “h1”   “z5”,   “r5”, “h5”                      |
+| region | Region-0 | …1773…   | …9973… | 2019-08-05-14:55:00   ~ 2019-08-30-10:30:00       | “z1”, “r1”,   “h1”   “z2”,   “r2”, “h2”   “z3”,   “r3”, “h3” |
+|        | Region-1 | …1773…   | …9973… | 2019-08-05-14:55:00   ~ 2019-08-30-10:30:00       | “z4”,   “r4”, “h4”   “z5”,   “r5”, “h5”                      |
+
+定义了两种类型的4个规则，所有规则间的key range都有重叠，“region”类型的规则间还存在时间范围的重叠，而“leader”类型的两条规则时间范围不重叠
+
+#### 测试结果
+
+![解析结果](https://github.com/a1iive/pd-plugin/blob/master/plugin_test/test2-1.png)
+
+规则Region-0和Region-1之间存在冲突，而规则Leader-0和Leader-1之间没有冲突，因为这两条规则虽然key range重叠但是时间没有交叉，所以可以在各自的时间段进行调度而不会互相影响。  
+
+对于同种规则间的冲突，默认为是用户配置了错误的定义，应该报告给用户修改配置文件，避免冲突
+
+### 不同类型规则间的冲突测试
+#### 测试方法
+
+- 更换配置[user_config](https://github.com/a1iive/pd-plugin/blob/master/conf/user_config.toml)内容为[test3_config](https://github.com/a1iive/pd-plugin/blob/master/plugin_test/test3_config.toml)
+
+- 应用用户配置
+
+```bash
+./plugin/signal.sh
+```
+
+#### 用户自定义规则
+
+| 类型   | 名称     | StartKey | EndKey | 目标StoreLabel                                               |
+| ------ | -------- | -------- | ------ | ------------------------------------------------------------ |
+| leader | Leader-0 | …5743…   | …9973… | “z2”,   “r2”, “h2”                                           |
+|        | Leader-1 | …3943…   | …5743… | “z1”,   “r1”, “h1”   “z5”,   “r5”, “h5”                      |
+| region | Region-0 | …5743…   | …6973… | “z1”,   “r1”, “h1”   “z2”,   “r2”, “h2”   “z3”,   “r3”, “h3” |
+|        | Region-1 | …6973…   | …9973… | “z3”,   “r3”, “h3”   “z4”,   “r4”, “h4”   “z5”,   “r5”, “h5” |
+
+构造了“leader”和“region”两种类型规则间的冲突，即Leader-0和Region-0、Region-1都有key range的重叠
+
+#### 测试结果
+
+![解析结果](https://github.com/a1iive/pd-plugin/blob/master/plugin_test/test3-1.png)
+
+规则Leader-0和Region-0、Region-1都有key range的重叠，需要进一步检查。Leader-0指定的store与Region-0指定的几个store相交，所以这两条规则是可以同时满足的，不存在冲突，而Region-1指定的store与Leader-0指定的store不相交，所以它们无法同时满足，因而产生冲突
+
+### 可调和的冲突测试
+#### 测试方法
+
+- 更换配置[user_config](https://github.com/a1iive/pd-plugin/blob/master/conf/user_config.toml)内容为[test4_config](https://github.com/a1iive/pd-plugin/blob/master/plugin_test/test4_config.toml)
+
+- 应用用户配置
+
+```bash
+./plugin/signal.sh
+```
+
+#### 用户自定义规则
+
+| 类型   | 名称     | StartKey | EndKey | 目标StoreLabel                                               |
+| ------ | -------- | -------- | ------ | ------------------------------------------------------------ |
+| leader | Leader-0 | …1773…   | …3943… | “z3”,   “r3”, “h3”                                           |
+|        | Leader-1 | …5743…   | …9973… | “z1”,   “r1”, “h1”   “z5”,   “r5”, “h5”                      |
+| region | Region-0 | …5743…   | …6973… | “z1”,   “r1”, “h1”   “z2”,   “r2”, “h2”   “z3”,   “r3”, “h3” |
+|        | Region-1 | …6973…   | …9973… | “z3”,   “r3”, “h3”    “z4”,   “r4”, “h4”   “z5”,   “r5”, “h5” |
+
+构造了“leader”和“region”两种类型规则间的冲突，即Leader-1和Region-0、Region-1都有key range的重叠，但是Leader-1指定了两个store，并且分别包含在两条“region”规则指定的store中
+
+#### 规则解析
+
+| 类型   | 名称     | RegionId                        | 目标StoreLabel                                               | StoreId |
+| ------ | -------- | ------------------------------- | ------------------------------------------------------------ | ------- |
+| leader | Leader-0 | 7362，7350，7356，7343          | “z3”,   “r3”, “h3”                                           | 8       |
+|        | Leader-1 | 6792，6819，6798，6811，6804，3 | “z1”,   “r1”, “h1”   “z5”,   “r5”, “h5”                      | 7，1    |
+| region | Region-0 | 6792，6819                      | “z1”,   “r1”, “h1”   “z2”,   “r2”, “h2”   “z3”, “r3”,   “h3” | 7，2，8 |
+|        | Region-1 | 6798，6811，6804，3             | “z3”,   “r3”, “h3”    “z4”,   “r4”, “h4”   “z5”,   “r5”, “h5” | 8,11，1 |
+
+当前获取的RegionId和StoreId，与上表对应  
+
+![move leader](https://github.com/a1iive/pd-plugin/blob/master/plugin_test/test4-1.png)
+
+![move region](https://github.com/a1iive/pd-plugin/blob/master/plugin_test/test4-2.png)
+
+规则Leader-1和Region-0、Region-1都有key range的重叠，所以需要进一步检查。
+
+![result](https://github.com/a1iive/pd-plugin/blob/master/plugin_test/test4-3.png)
+
+由于规则Leader-1指定的目标store和Region-0、Region-1的都有交叉，所以它们都可以同时满足，冲突可以避免，可见对应的scheduler创建成功
+
+#### 测试结果
+
+|  类型  |   名称   |       RegionId       | StoreId（按序） |      |      |      |      |
+| :----: | :------: | :------------------: | :-------------: | :--: | :--: | :--: | :--: |
+|        |          |                      |        7        |  2   |  8   |  11  |  1   |
+| leader | Leader-0 |         7362         |        F        |      |  L   |  F   |      |
+|        |          |         7350         |                 |  F   |  L   |  F   |      |
+|        |          |         7356         |        F        |      |  L   |  F   |      |
+|        |          |         7343         |        F        |  F   |  L   |      |      |
+|        | Leader-1 | 见Region-0、Region-1 |                 |      |      |      |      |
+| region | Region-0 |         6792         |        L        |  F   |  F   |      |      |
+|        |          |         6819         |        L        |  F   |  F   |      |      |
+|        | Region-1 |         6798         |                 |      |  F   |  F   |  L   |
+|        |          |         6811         |                 |      |  F   |  F   |  L   |
+|        |          |         6804         |                 |      |  F   |  F   |  L   |
+|        |          |          3           |                 |      |  F   |  F   |  L   |
+|   -    |   其他   |         7274         |        F        |  L   |      |      |  F   |
+|        |          |         7368         |        L        |  F   |      |      |  F   |
+|        |          |         6824         |        F        |  F   |      |  L   |      |
+
+规则Leader-0覆盖region的leader都在指定store（id=8）上。规则Region-0覆盖的region所有副本都在指定store（id=7、2、8）上，规则Region-1覆盖的region所有副本都在指定store（id=8、11、1）上
+
+规则Leader-1覆盖的region正好是Region-0和Region-1的所有region之和，这条规则要求对应region的leader必须在store-7或store-1上，表中可以看出结果刚好满足这一条件。  
+也就是说，只要“leader”规则与“region”规则指定的store存在交叉关系，那么即便region有重叠也是可以接受的。
+
+Region分布结果见[test4_result](https://github.com/a1iive/pd-plugin/blob/master/plugin_test/test4_result.txt)
